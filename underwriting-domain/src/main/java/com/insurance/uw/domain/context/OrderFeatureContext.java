@@ -1,0 +1,121 @@
+package com.insurance.uw.domain.context;
+
+import com.insurance.uw.domain.model.entity.Order;
+
+import java.util.*;
+import java.util.stream.Collectors;
+
+/**
+ * 订单特征上下文 — 顶层上下文，持有订单引用、所有保单上下文、订单级特征
+ *
+ * 零拷贝设计：只持有 Order 对象引用。
+ * 构建时递归创建所有子级上下文树。
+ */
+public class OrderFeatureContext {
+
+    private final Order order;
+    private final List<PolicyFeatureContext> policyContexts;
+    private final Map<String, Object> orderFeatures = new HashMap<>();
+
+    /**
+     * 由调度器在执行前注入（非持久化，仅当前次核保有效）
+     * featureCode → 相关被保人 ID 集合
+     */
+    private Map<String, Set<String>> featureToInsuredIds;
+
+    /**
+     * 由调度器在执行前注入（非持久化，仅当前次核保有效）
+     * featureCode → 相关保单 ID 集合
+     */
+    private Map<String, Set<String>> featureToPolicyIds;
+
+    public OrderFeatureContext(Order order) {
+        this.order = order;
+        this.policyContexts = order.getPolicies().stream()
+                .map(p -> new PolicyFeatureContext(p, this))
+                .collect(Collectors.toList());
+    }
+
+    // ---- 原始对象引用 ----
+    public Order getOrder() { return order; }
+
+    // ---- 代理属性 ----
+    public String getOrderId() { return order.getId(); }
+    public String getChannel() { return order.getChannel(); }
+
+    // ---- 子级上下文 ----
+    public List<PolicyFeatureContext> getPolicies() { return policyContexts; }
+
+    // ---- 特征结果 ----
+    public Map<String, Object> getOrderFeatures() { return orderFeatures; }
+
+    // ---- 特征→被保人/保单映射（由调度器注入） ----
+
+    public void setFeatureInsuredMapping(Map<String, Set<String>> insuredMapping) {
+        this.featureToInsuredIds = insuredMapping;
+    }
+
+    public void setFeaturePolicyMapping(Map<String, Set<String>> policyMapping) {
+        this.featureToPolicyIds = policyMapping;
+    }
+
+    // ---- 便捷查找 ----
+
+    /**
+     * 按被保人ID查找对应的被保人上下文
+     */
+    public InsuredFeatureContext findInsuredCtx(String insuredId) {
+        return policyContexts.stream()
+                .flatMap(pc -> pc.getInsureds().stream())
+                .filter(ic -> ic.getInsuredId().equals(insuredId))
+                .findFirst().orElse(null);
+    }
+
+    /**
+     * 按保单ID查找保单上下文
+     */
+    public PolicyFeatureContext findPolicyCtx(String policyId) {
+        return policyContexts.stream()
+                .filter(pc -> pc.getPolicyId().equals(policyId))
+                .findFirst().orElse(null);
+    }
+
+    /**
+     * 获取所有被保人上下文（扁平化）
+     */
+    public List<InsuredFeatureContext> getAllInsuredContexts() {
+        return policyContexts.stream()
+                .flatMap(pc -> pc.getInsureds().stream())
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * 按特征码返回相关被保人上下文（含 customerNos）。
+     * 若 mapping 未注入或该特征无映射 → 回退到 getAllInsuredContexts()。
+     */
+    public List<InsuredFeatureContext> getInsuredsForFeature(String featureCode) {
+        Set<String> insuredIds = (featureToInsuredIds != null) ? featureToInsuredIds.get(featureCode) : null;
+        if (insuredIds == null || insuredIds.isEmpty()) {
+            return getAllInsuredContexts();
+        }
+        return policyContexts.stream()
+                .flatMap(pc -> pc.getInsureds().stream())
+                .filter(ic -> insuredIds.contains(ic.getInsuredId()))
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * 按特征码返回相关保单上下文（用于收集对应投保人）。
+     * 若 mapping 未注入或该特征无映射 → 回退到 getPolicies()。
+     */
+    public List<PolicyFeatureContext> getPoliciesForFeature(String featureCode) {
+        Set<String> policyIds = (featureToPolicyIds != null) ? featureToPolicyIds.get(featureCode) : null;
+        if (policyIds == null || policyIds.isEmpty()) {
+            return getPolicies();
+        }
+        return policyContexts.stream()
+                .filter(pc -> policyIds.contains(pc.getPolicyId()))
+                .collect(Collectors.toList());
+    }
+
+}

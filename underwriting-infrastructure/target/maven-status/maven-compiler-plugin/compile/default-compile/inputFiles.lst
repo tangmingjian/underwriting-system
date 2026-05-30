@@ -1,0 +1,15 @@
+/Users/tangmingjian/project/IdeaProjects/underwriting-system/underwriting-infrastructure/src/main/java/com/insurance/uw/infrastructure/client/DownstreamApiClientImpl.java
+/Users/tangmingjian/project/IdeaProjects/underwriting-system/underwriting-infrastructure/src/main/java/com/insurance/uw/infrastructure/client/MockDownstreamApiClient.java
+/Users/tangmingjian/project/IdeaProjects/underwriting-system/underwriting-infrastructure/src/main/java/com/insurance/uw/infrastructure/client/discovery/DirectServiceDiscoveryStrategy.java
+/Users/tangmingjian/project/IdeaProjects/underwriting-system/underwriting-infrastructure/src/main/java/com/insurance/uw/infrastructure/client/discovery/NacosServiceDiscoveryStrategy.java
+/Users/tangmingjian/project/IdeaProjects/underwriting-system/underwriting-infrastructure/src/main/java/com/insurance/uw/infrastructure/client/discovery/ServiceDiscoveryRouter.java
+/Users/tangmingjian/project/IdeaProjects/underwriting-system/underwriting-infrastructure/src/main/java/com/insurance/uw/infrastructure/client/discovery/ServiceDiscoveryStrategy.java
+/Users/tangmingjian/project/IdeaProjects/underwriting-system/underwriting-infrastructure/src/main/java/com/insurance/uw/infrastructure/client/discovery/StaticServiceDiscoveryStrategy.java
+/Users/tangmingjian/project/IdeaProjects/underwriting-system/underwriting-infrastructure/src/main/java/com/insurance/uw/infrastructure/config/UnderwritingConfiguration.java
+/Users/tangmingjian/project/IdeaProjects/underwriting-system/underwriting-infrastructure/src/main/java/com/insurance/uw/infrastructure/groovy/GroovyMappingEngineImpl.java
+/Users/tangmingjian/project/IdeaProjects/underwriting-system/underwriting-infrastructure/src/main/java/com/insurance/uw/infrastructure/persistence/FeatureConfigMapper.java
+/Users/tangmingjian/project/IdeaProjects/underwriting-system/underwriting-infrastructure/src/main/java/com/insurance/uw/infrastructure/persistence/FeatureConfigRepositoryImpl.java
+/Users/tangmingjian/project/IdeaProjects/underwriting-system/underwriting-infrastructure/src/main/java/com/insurance/uw/infrastructure/persistence/FeatureScriptMapper.java
+/Users/tangmingjian/project/IdeaProjects/underwriting-system/underwriting-infrastructure/src/main/java/com/insurance/uw/infrastructure/persistence/FeatureScriptRepositoryImpl.java
+/Users/tangmingjian/project/IdeaProjects/underwriting-system/underwriting-infrastructure/src/main/java/com/insurance/uw/infrastructure/persistence/UnderwritingRuleMapper.java
+/Users/tangmingjian/project/IdeaProjects/underwriting-system/underwriting-infrastructure/src/main/java/com/insurance/uw/infrastructure/persistence/UnderwritingRuleRepositoryImpl.java

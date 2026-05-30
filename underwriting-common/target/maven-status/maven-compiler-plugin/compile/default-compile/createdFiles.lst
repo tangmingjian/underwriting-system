@@ -1,0 +1,8 @@
+com/insurance/uw/common/enums/StorageLevel.class
+com/insurance/uw/common/enums/AggregationLevel.class
+com/insurance/uw/common/enums/FeatureStatus.class
+com/insurance/uw/common/enums/FeatureCategory.class
+com/insurance/uw/common/enums/RuleType.class
+com/insurance/uw/common/enums/DataType.class
+com/insurance/uw/common/exception/BusinessException.class
+com/insurance/uw/common/enums/CalcType.class

@@ -1,0 +1,65 @@
+package com.insurance.uw.domain.model.entity;
+
+import com.baomidou.mybatisplus.annotation.TableName;
+import com.insurance.uw.common.enums.RuleType;
+
+import java.time.LocalDateTime;
+
+/**
+ * 核保规则聚合根 — 映射 t_underwriting_rule 表
+ */
+@TableName("t_underwriting_rule")
+public class UnderwritingRule {
+
+    private Long id;
+    private String ruleCode;
+    private String ruleName;
+    private RuleType ruleType;
+    private String expression;
+    private String featureCodes;
+    private String productCode;
+    private Integer priority;
+    private Integer status;
+    private LocalDateTime createTime;
+    private LocalDateTime updateTime;
+
+    public UnderwritingRule() {}
+
+    public Long getId() { return id; }
+    public void setId(Long id) { this.id = id; }
+
+    public String getRuleCode() { return ruleCode; }
+    public void setRuleCode(String ruleCode) { this.ruleCode = ruleCode; }
+
+    public String getRuleName() { return ruleName; }
+    public void setRuleName(String ruleName) { this.ruleName = ruleName; }
+
+    public RuleType getRuleType() { return ruleType; }
+    public void setRuleType(RuleType ruleType) { this.ruleType = ruleType; }
+
+    public String getExpression() { return expression; }
+    public void setExpression(String expression) { this.expression = expression; }
+
+    public String getFeatureCodes() { return featureCodes; }
+    public void setFeatureCodes(String featureCodes) { this.featureCodes = featureCodes; }
+
+    public String getProductCode() { return productCode; }
+    public void setProductCode(String productCode) { this.productCode = productCode; }
+
+    public Integer getPriority() { return priority; }
+    public void setPriority(Integer priority) { this.priority = priority; }
+
+    public Integer getStatus() { return status; }
+    public void setStatus(Integer status) { this.status = status; }
+
+    public LocalDateTime getCreateTime() { return createTime; }
+    public void setCreateTime(LocalDateTime createTime) { this.createTime = createTime; }
+
+    public LocalDateTime getUpdateTime() { return updateTime; }
+    public void setUpdateTime(LocalDateTime updateTime) { this.updateTime = updateTime; }
+
+    public boolean isEnabled() {
+        return status != null && status == 1;
+    }
+
+}

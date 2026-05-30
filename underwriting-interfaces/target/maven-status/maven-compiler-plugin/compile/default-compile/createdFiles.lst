@@ -1,0 +1,4 @@
+com/insurance/uw/interfaces/controller/RuleController.class
+com/insurance/uw/interfaces/controller/FeatureConfigController.class
+com/insurance/uw/interfaces/controller/UnderwritingController.class
+com/insurance/uw/interfaces/controller/ScriptController.class
