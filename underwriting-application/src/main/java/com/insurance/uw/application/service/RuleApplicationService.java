@@ -56,7 +56,7 @@ public class RuleApplicationService {
      * @return 核保结果列表，每条记录包含评估对象、规则、是否通过
      */
     public List<UnderwritingResult> evaluate(OrderFeatureContext orderCtx) {
-        List<UnderwritingRule> rules = repository.findAllEnabled();
+        List<UnderwritingRule> rules = new ArrayList<>(repository.findAllEnabled());
         // 按优先级排序
         rules.sort(Comparator.comparingInt(r -> r.getPriority() != null ? r.getPriority() : 0));
 
