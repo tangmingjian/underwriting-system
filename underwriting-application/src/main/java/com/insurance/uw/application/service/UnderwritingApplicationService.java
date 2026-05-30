@@ -1,5 +1,6 @@
 package com.insurance.uw.application.service;
 
+import com.insurance.uw.application.service.handler.FeatureCalcHandler;
 import com.insurance.uw.common.enums.AggregationLevel;
 import com.insurance.uw.common.enums.CalcType;
 import com.insurance.uw.common.enums.StorageLevel;
@@ -9,16 +10,9 @@ import com.insurance.uw.domain.context.PolicyFeatureContext;
 import com.insurance.uw.domain.model.entity.FeatureConfig;
 import com.insurance.uw.domain.model.entity.Order;
 import com.insurance.uw.domain.model.entity.UnderwritingRule;
-import com.insurance.uw.domain.model.valueobject.CalcConfig;
-import com.insurance.uw.domain.model.valueobject.ServiceConfig;
-import com.insurance.uw.domain.model.entity.FeatureScript;
 import com.insurance.uw.domain.repository.FeatureConfigRepository;
-import com.insurance.uw.domain.repository.FeatureScriptRepository;
 import com.insurance.uw.domain.repository.UnderwritingRuleRepository;
-import com.insurance.uw.domain.service.DownstreamApiClient;
 import com.insurance.uw.domain.service.FeatureDependencyResolver;
-import com.insurance.uw.domain.service.GroovyMappingEngine;
-
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
@@ -37,26 +31,23 @@ import java.util.stream.Collectors;
 public class UnderwritingApplicationService {
 
     private final FeatureConfigRepository featureConfigRepository;
-    private final FeatureScriptRepository scriptRepository;
     private final UnderwritingRuleRepository ruleRepository;
     private final FeatureDependencyResolver dependencyResolver;
-    private final DownstreamApiClient apiClient;
-    private final GroovyMappingEngine groovyEngine;
     private final ExecutorService executor;
+    private final Map<CalcType, FeatureCalcHandler> calcHandlers;
 
     public UnderwritingApplicationService(FeatureConfigRepository featureConfigRepository,
-                                          FeatureScriptRepository scriptRepository,
                                           UnderwritingRuleRepository ruleRepository,
-                                          DownstreamApiClient apiClient,
-                                          GroovyMappingEngine groovyEngine,
-                                          ExecutorService executor) {
+                                          ExecutorService executor,
+                                          List<FeatureCalcHandler> handlers) {
         this.featureConfigRepository = featureConfigRepository;
-        this.scriptRepository = scriptRepository;
         this.ruleRepository = ruleRepository;
         this.dependencyResolver = new FeatureDependencyResolver();
-        this.apiClient = apiClient;
-        this.groovyEngine = groovyEngine;
         this.executor = executor;
+        this.calcHandlers = new HashMap<>();
+        for (FeatureCalcHandler h : handlers) {
+            this.calcHandlers.put(h.getSupportedType(), h);
+        }
     }
 
     /**
@@ -209,76 +200,12 @@ public class UnderwritingApplicationService {
 
     // ==================== 按 calc_type 分发 ====================
 
-    /**
-     * 根据 calc_type 选择计算逻辑，返回特征结果 Map
-     */
-    @SuppressWarnings("unchecked")
     private Map<String, Object> executeByCalcType(Object ctx, FeatureConfig fc) {
-        CalcType calcType = fc.getCalcType();
-        if (calcType == null) {
-            throw new IllegalArgumentException("特征 " + fc.getFeatureCode() + " 未配置 calc_type");
+        FeatureCalcHandler handler = calcHandlers.get(fc.getCalcType());
+        if (handler == null) {
+            throw new IllegalArgumentException("不支持的计算类型: " + fc.getCalcType());
         }
-
-        switch (calcType) {
-            case EXTERNAL_API:
-                return executeExternalApi(ctx, fc);
-            case EXPRESSION:
-                // TODO: SpEL 表达式计算
-                throw new UnsupportedOperationException("EXPRESSION 类型暂未实现");
-            case PARAM_MAPPING:
-                // TODO: 参数映射取数
-                throw new UnsupportedOperationException("PARAM_MAPPING 类型暂未实现");
-            case DATABASE_QUERY:
-                // TODO: 数据库查询取数
-                throw new UnsupportedOperationException("DATABASE_QUERY 类型暂未实现");
-            case COMPOSITE:
-                // TODO: 复合特征计算
-                throw new UnsupportedOperationException("COMPOSITE 类型暂未实现");
-            default:
-                throw new IllegalArgumentException("不支持的计算类型: " + calcType);
-        }
-    }
-
-    /**
-     * EXTERNAL_API 类型：从 t_feature_script 加载脚本 → Groovy 拼装请求 → HTTP 调用 → Groovy 提取响应
-     */
-    @SuppressWarnings("unchecked")
-    private Map<String, Object> executeExternalApi(Object ctx, FeatureConfig fc) {
-        CalcConfig calcConfig = fc.getCalcConfig();
-        ServiceConfig serviceConfig = calcConfig.getService();
-        if (serviceConfig == null) {
-            throw new IllegalArgumentException("特征 " + fc.getFeatureCode() + " calc_config.service 未配置");
-        }
-
-        // 1. 加载入参脚本
-        String inputScriptId = calcConfig.getInputScriptId();
-        FeatureScript inScript = scriptRepository.findByScriptId(inputScriptId)
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "入参脚本不存在: " + inputScriptId + "（特征: " + fc.getFeatureCode() + "）"));
-
-        // 2. 加载出参脚本
-        String outputScriptId = calcConfig.getOutputScriptId();
-        FeatureScript outScript = scriptRepository.findByScriptId(outputScriptId)
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "出参脚本不存在: " + outputScriptId + "（特征: " + fc.getFeatureCode() + "）"));
-
-        // 3. Groovy buildRequest
-        Map<String, Object> request = (Map<String, Object>) groovyEngine.invoke(
-                inputScriptId, inScript.getScriptText(), "buildRequest", ctx);
-
-        // 4. HTTP 调用
-        Map<String, Object> response = apiClient.call(serviceConfig, request);
-
-        // 5. Groovy extractFeatures
-        Map<String, Map<String, Object>> featureResults = (Map<String, Map<String, Object>>) groovyEngine.invoke(
-                outputScriptId, outScript.getScriptText(), "extractFeatures", response, ctx);
-
-        // 6. 展平为 Map
-        Map<String, Object> result = new HashMap<>();
-        if (featureResults != null) {
-            featureResults.forEach((targetId, featureMap) -> result.put(targetId, featureMap));
-        }
-        return result;
+        return handler.execute(ctx, fc);
     }
 
     // ==================== 结果存储 ====================

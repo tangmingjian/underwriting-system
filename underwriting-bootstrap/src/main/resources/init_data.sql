@@ -380,6 +380,82 @@ INSERT INTO t_underwriting_rule (rule_code, rule_name, rule_type, expression, fe
  'pol.maxSumAssured', 'ACCIDENT_B_002', 25, 1);
 
 -- ============================================================
+-- 场景 6~10：PARAM_MAPPING 入参取数 — 直接从请求实体字段读取特征值
+-- 无需调用下游 API，无需 feature_script
+-- ============================================================
+
+-- 被保人年龄
+INSERT INTO t_feature_config (
+    feature_code, feature_name, category, data_type, calc_type,
+    calc_config, aggregation, storage_level,
+    version, ttl_seconds, source_system, owner, status
+) VALUES (
+    'ins.age', '被保人年龄', 'ATOMIC', 'INT', 'PARAM_MAPPING',
+    '{"source":"insured.age"}',
+    'POLICY', 'INSURED', 1, -1, 'request', 'admin', 'DRAFT'
+);
+
+-- 被保人性别
+INSERT INTO t_feature_config (
+    feature_code, feature_name, category, data_type, calc_type,
+    calc_config, aggregation, storage_level,
+    version, ttl_seconds, source_system, owner, status
+) VALUES (
+    'ins.gender', '被保人性别', 'ATOMIC', 'STRING', 'PARAM_MAPPING',
+    '{"source":"insured.gender"}',
+    'POLICY', 'INSURED', 1, -1, 'request', 'admin', 'DRAFT'
+);
+
+-- 被保人职业
+INSERT INTO t_feature_config (
+    feature_code, feature_name, category, data_type, calc_type,
+    calc_config, aggregation, storage_level,
+    version, ttl_seconds, source_system, owner, status
+) VALUES (
+    'ins.occupation', '被保人职业', 'ATOMIC', 'STRING', 'PARAM_MAPPING',
+    '{"source":"insured.occupation"}',
+    'POLICY', 'INSURED', 1, -1, 'request', 'admin', 'DRAFT'
+);
+
+-- 投保金额（订单级：为每个相关保单取 appliedAmount → POLICY 存储）
+INSERT INTO t_feature_config (
+    feature_code, feature_name, category, data_type, calc_type,
+    calc_config, aggregation, storage_level,
+    version, ttl_seconds, source_system, owner, status
+) VALUES (
+    'pol.appliedAmount', '投保金额', 'ATOMIC', 'DECIMAL', 'PARAM_MAPPING',
+    '{"source":"policy.appliedAmount"}',
+    'ORDER', 'POLICY', 1, -1, 'request', 'admin', 'DRAFT'
+);
+
+-- 渠道编码（订单级 → ORDER 存储）
+INSERT INTO t_feature_config (
+    feature_code, feature_name, category, data_type, calc_type,
+    calc_config, aggregation, storage_level,
+    version, ttl_seconds, source_system, owner, status
+) VALUES (
+    'ord.channel', '渠道编码', 'ATOMIC', 'STRING', 'PARAM_MAPPING',
+    '{"source":"order.channel"}',
+    'ORDER', 'ORDER', 1, -1, 'request', 'admin', 'DRAFT'
+);
+
+-- ============================================================
+-- PARAM_MAPPING 对应规则
+-- ============================================================
+
+-- 被保人年龄 ≥ 18
+INSERT INTO t_underwriting_rule (rule_code, rule_name, rule_type, expression, feature_codes, product_code, priority, status) VALUES
+('RULE_AGE_001', '被保人成年检查', 'INSURED',
+ '#root[''ins.age''] >= 18',
+ 'ins.age', 'HEALTH_A_001', 10, 1);
+
+-- 被保人性别有效
+INSERT INTO t_underwriting_rule (rule_code, rule_name, rule_type, expression, feature_codes, product_code, priority, status) VALUES
+('RULE_GENDER_001', '被保人性别有效性', 'INSURED',
+ '#root[''ins.gender''] != null',
+ 'ins.gender', 'HEALTH_A_001', 10, 1);
+
+-- ============================================================
 -- 同人客户号模式总结
 -- ============================================================
 --

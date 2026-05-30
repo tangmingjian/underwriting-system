@@ -27,6 +27,10 @@ public class CalcConfig {
     @JsonProperty("output_script_id")
     private String outputScriptId;
 
+    /** 入参取数路径（PARAM_MAPPING 类型），格式 {entityType}.{fieldName}，如 insured.age */
+    @JsonProperty("source")
+    private String source;
+
     public CalcConfig() {}
 
     public ServiceConfig getService() { return service; }
@@ -37,6 +41,9 @@ public class CalcConfig {
 
     public String getOutputScriptId() { return outputScriptId; }
     public void setOutputScriptId(String outputScriptId) { this.outputScriptId = outputScriptId; }
+
+    public String getSource() { return source; }
+    public void setSource(String source) { this.source = source; }
 
     // ==================== JSON 序列化/反序列化工具方法 ====================
 
