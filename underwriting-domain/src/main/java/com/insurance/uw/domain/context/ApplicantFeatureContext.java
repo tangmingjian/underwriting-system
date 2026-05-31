@@ -1,5 +1,6 @@
 package com.insurance.uw.domain.context;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.insurance.uw.domain.model.entity.Applicant;
 
 import java.util.HashMap;
@@ -11,6 +12,7 @@ import java.util.Map;
  */
 public class ApplicantFeatureContext {
 
+    @JsonIgnore
     private final Applicant applicant;
     private final Map<String, Object> features = new HashMap<>();
 
@@ -18,6 +20,7 @@ public class ApplicantFeatureContext {
         this.applicant = applicant;
     }
 
+    @JsonIgnore
     public Applicant getApplicant() { return applicant; }
 
     // ---- 代理属性 ----

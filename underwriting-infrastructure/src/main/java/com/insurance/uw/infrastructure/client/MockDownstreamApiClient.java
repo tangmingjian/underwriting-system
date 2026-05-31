@@ -5,6 +5,7 @@ import com.insurance.uw.domain.service.DownstreamApiClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.net.URI;
 import java.util.*;
 
 /**
@@ -30,12 +31,15 @@ public class MockDownstreamApiClient implements DownstreamApiClient {
     @Override
     @SuppressWarnings("unchecked")
     public Map<String, Object> call(ServiceConfig config, Map<String, Object> request) {
-        String path = config.getPath();
-        log.info("[Mock] 拦截下游调用: path={}, request keys={}", path, request != null ? request.keySet() : "null");
+        String rawPath = config.getPath();
+        log.info("[Mock] 拦截下游调用: path={}, request keys={}", rawPath, request != null ? request.keySet() : "null");
 
         if (request == null) {
             return Collections.emptyMap();
         }
+
+        // 如果 path 是完整 URL（如 https://host/api/limit/query），提取路径部分以匹配
+        String path = extractPath(rawPath);
 
         Map<String, Object> data;
         if (PATH_CREDIT_SCORE.equals(path)) {
@@ -49,7 +53,7 @@ public class MockDownstreamApiClient implements DownstreamApiClient {
         } else if (PATH_PRODUCT_LIMIT.equals(path)) {
             data = mockProductLimit(request);
         } else {
-            log.warn("[Mock] 未知路径 {}，返回空数据", path);
+            log.warn("[Mock] 未知路径 {}（原始: {}），返回空数据", path, rawPath);
             data = Collections.emptyMap();
         }
 
@@ -167,6 +171,25 @@ public class MockDownstreamApiClient implements DownstreamApiClient {
     }
 
     // ---- helper ----
+
+    /**
+     * 如果 path 是完整 URL（http/https 开头），提取路径部分；
+     * 否则原样返回。确保与 DIRECT 模式下的完整 URL 配置兼容。
+     */
+    private static String extractPath(String path) {
+        if (path == null) {
+            return null;
+        }
+        if (path.startsWith("http://") || path.startsWith("https://")) {
+            try {
+                return URI.create(path).getPath();
+            } catch (Exception e) {
+                log.warn("[Mock] 无法解析 URL path: {}", path);
+                return path;
+            }
+        }
+        return path;
+    }
 
     private static String scoreToLevel(Random rng) {
         int n = rng.nextInt(4);

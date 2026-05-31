@@ -1,5 +1,6 @@
 package com.insurance.uw.domain.context;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.insurance.uw.domain.model.entity.Order;
 
 import java.util.*;
@@ -12,7 +13,7 @@ import java.util.stream.Collectors;
  * 构建时递归创建所有子级上下文树。
  */
 public class OrderFeatureContext {
-
+    @JsonIgnore
     private final Order order;
     private final List<PolicyFeatureContext> policyContexts;
     private final Map<String, Object> orderFeatures = new HashMap<>();
@@ -21,12 +22,14 @@ public class OrderFeatureContext {
      * 由调度器在执行前注入（非持久化，仅当前次核保有效）
      * featureCode → 相关被保人 ID 集合
      */
+    @JsonIgnore
     private Map<String, Set<String>> featureToInsuredIds;
 
     /**
      * 由调度器在执行前注入（非持久化，仅当前次核保有效）
      * featureCode → 相关保单 ID 集合
      */
+    @JsonIgnore
     private Map<String, Set<String>> featureToPolicyIds;
 
     public OrderFeatureContext(Order order) {
@@ -36,7 +39,8 @@ public class OrderFeatureContext {
                 .collect(Collectors.toList());
     }
 
-    // ---- 原始对象引用 ----
+    // ---- 原始对象引用（仅内部使用，不参与序列化） ----
+    @JsonIgnore
     public Order getOrder() { return order; }
 
     // ---- 代理属性 ----

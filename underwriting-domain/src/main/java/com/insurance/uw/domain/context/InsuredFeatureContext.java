@@ -1,5 +1,6 @@
 package com.insurance.uw.domain.context;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.insurance.uw.domain.model.entity.Insured;
 
 import java.util.HashMap;
@@ -14,8 +15,9 @@ import java.util.Map;
  * 双向引用：通过 parentPolicyCtx 向上导航到投保单、订单。
  */
 public class InsuredFeatureContext {
-
+    @JsonIgnore
     private final Insured insured;
+    @JsonIgnore
     private final PolicyFeatureContext parentPolicyCtx;
     private final Map<String, Object> acquiredFeatures = new HashMap<>();
 
@@ -24,7 +26,8 @@ public class InsuredFeatureContext {
         this.parentPolicyCtx = parentPolicyCtx;
     }
 
-    // ---- 原始对象引用 ----
+    // ---- 原始对象引用（仅内部使用，不参与序列化） ----
+    @JsonIgnore
     public Insured getInsured() { return insured; }
 
     // ---- 代理属性，方便 Groovy 脚本直接访问 ----
@@ -41,16 +44,19 @@ public class InsuredFeatureContext {
     // ---- 特征结果 ----
     public Map<String, Object> getAcquiredFeatures() { return acquiredFeatures; }
 
-    // ---- 双向引用导航 ----
+    // ---- 双向引用导航（仅内部导航，不参与序列化） ----
+    @JsonIgnore
     public PolicyFeatureContext getPolicyContext() { return parentPolicyCtx; }
 
+    @JsonIgnore
     public OrderFeatureContext getOrderContext() {
         return parentPolicyCtx != null ? parentPolicyCtx.getOrderContext() : null;
     }
 
     /**
-     * 向上导航获取订单级别的特征值
+     * 向上导航获取订单级别的特征值（仅内部使用，不参与序列化）
      */
+    @JsonIgnore
     public Object getOrderFeature(String key) {
         OrderFeatureContext octx = getOrderContext();
         return octx != null ? octx.getOrderFeatures().get(key) : null;

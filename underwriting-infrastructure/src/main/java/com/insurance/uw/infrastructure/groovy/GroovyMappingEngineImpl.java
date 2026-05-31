@@ -5,6 +5,7 @@ import groovy.lang.GroovyObject;
 import groovy.lang.GroovyClassLoader;
 import org.codehaus.groovy.control.CompilerConfiguration;
 import org.codehaus.groovy.control.customizers.ImportCustomizer;
+import org.codehaus.groovy.runtime.InvokerHelper;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -38,7 +39,7 @@ public class GroovyMappingEngineImpl implements GroovyMappingEngine {
         Class<GroovyObject> clazz = getScriptClass(scriptId, scriptText);
         try {
             GroovyObject instance = clazz.getDeclaredConstructor().newInstance();
-            return instance.invokeMethod(methodName, args);
+            return InvokerHelper.invokeMethod(instance, methodName, args);
         } catch (Exception e) {
             throw new RuntimeException(
                     "Groovy 脚本 [" + scriptId + "] 执行方法 [" + methodName + "] 失败: " + e.getMessage(), e);

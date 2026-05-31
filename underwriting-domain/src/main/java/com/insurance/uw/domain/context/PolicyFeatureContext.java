@@ -1,5 +1,6 @@
 package com.insurance.uw.domain.context;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.insurance.uw.domain.model.entity.Policy;
 
 import java.util.HashMap;
@@ -14,8 +15,9 @@ import java.util.stream.Collectors;
  * 双向引用：持有 parentOrderCtx 向上导航，构建时将自身传入子级上下文。
  */
 public class PolicyFeatureContext {
-
+    @JsonIgnore
     private final Policy policy;
+    @JsonIgnore
     private final OrderFeatureContext parentOrderCtx;
     private final ApplicantFeatureContext applicantCtx;
     private final List<InsuredFeatureContext> insuredContexts;
@@ -30,7 +32,8 @@ public class PolicyFeatureContext {
                 .collect(Collectors.toList());
     }
 
-    // ---- 原始对象引用 ----
+    // ---- 原始对象引用（仅内部使用，不参与序列化） ----
+    @JsonIgnore
     public Policy getPolicy() { return policy; }
 
     // ---- 代理属性 ----
@@ -44,7 +47,8 @@ public class PolicyFeatureContext {
     // ---- 特征结果 ----
     public Map<String, Object> getPolicyFeatures() { return policyFeatures; }
 
-    // ---- 向上导航 ----
+    // ---- 向上导航（仅内部导航，不参与序列化） ----
+    @JsonIgnore
     public OrderFeatureContext getOrderContext() { return parentOrderCtx; }
 
 }
