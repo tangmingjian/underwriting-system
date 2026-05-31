@@ -1,9 +1,0 @@
-/Users/tangmingjian/project/IdeaProjects/underwriting-system/underwriting-application/src/main/java/com/insurance/uw/application/service/FeatureConfigApplicationService.java
-/Users/tangmingjian/project/IdeaProjects/underwriting-system/underwriting-application/src/main/java/com/insurance/uw/application/service/RuleApplicationService.java
-/Users/tangmingjian/project/IdeaProjects/underwriting-system/underwriting-application/src/main/java/com/insurance/uw/application/service/UnderwritingApplicationService.java
-/Users/tangmingjian/project/IdeaProjects/underwriting-system/underwriting-application/src/main/java/com/insurance/uw/application/service/handler/CompositeCalcHandler.java
-/Users/tangmingjian/project/IdeaProjects/underwriting-system/underwriting-application/src/main/java/com/insurance/uw/application/service/handler/DatabaseQueryCalcHandler.java
-/Users/tangmingjian/project/IdeaProjects/underwriting-system/underwriting-application/src/main/java/com/insurance/uw/application/service/handler/ExpressionCalcHandler.java
-/Users/tangmingjian/project/IdeaProjects/underwriting-system/underwriting-application/src/main/java/com/insurance/uw/application/service/handler/ExternalApiCalcHandler.java
-/Users/tangmingjian/project/IdeaProjects/underwriting-system/underwriting-application/src/main/java/com/insurance/uw/application/service/handler/FeatureCalcHandler.java
-/Users/tangmingjian/project/IdeaProjects/underwriting-system/underwriting-application/src/main/java/com/insurance/uw/application/service/handler/ParamMappingCalcHandler.java

@@ -122,7 +122,7 @@ class ParamMappingCalcHandlerTest {
         }
 
         @Test
-        @DisplayName("无效的 entityType → 抛出异常")
+        @DisplayName("无效的 entityType → 抛出异常，提示支持 feature")
         void invalidEntityType() {
             FeatureConfig config = new FeatureConfig();
             config.setFeatureCode("TEST_FC");
@@ -132,7 +132,8 @@ class ParamMappingCalcHandlerTest {
 
             assertThatThrownBy(() -> handler.execute(orderCtx, config))
                     .isInstanceOf(IllegalArgumentException.class)
-                    .hasMessageContaining("entityType 无效");
+                    .hasMessageContaining("entityType 无效")
+                    .hasMessageContaining("feature");
         }
 
         @Test
@@ -230,6 +231,86 @@ class ParamMappingCalcHandlerTest {
             Map<String, Object> featureMap = (Map<String, Object>) result.get("__ORDER__");
             assertThat(featureMap).containsEntry("TEST_FC", "ORD001");
         }
+
+        @Test
+        @DisplayName("entityType=feature → 从被保人 acquiredFeatures 读取依赖特征并提取子字段")
+        void featureEntityType() {
+            // Populate INS001's acquiredFeatures with a BASE_RISK result (from ExternalApiCalcHandler)
+            InsuredFeatureContext insCtx = orderCtx.getAllInsuredContexts().get(0); // INS001
+            insCtx.getAcquiredFeatures().put("BASE_RISK", Map.of("riskScore", 85, "fraudScore", 60));
+
+            Map<String, Object> result = handler.execute(orderCtx, fc("feature.BASE_RISK.riskScore"));
+
+            assertThat(result).containsKey("INS001");
+            @SuppressWarnings("unchecked")
+            Map<String, Object> featureMap = (Map<String, Object>) result.get("INS001");
+            assertThat(featureMap).containsEntry("TEST_FC", 85);
+        }
+
+        @Test
+        @DisplayName("entityType=feature → 无子路径时直接返回整个依赖特征结果")
+        void featureEntityTypeNoSubPath() {
+            Map<String, Object> depData = Map.of("riskScore", 85, "fraudScore", 60);
+            InsuredFeatureContext insCtx = orderCtx.getAllInsuredContexts().get(0);
+            insCtx.getAcquiredFeatures().put("BASE_RISK", depData);
+
+            Map<String, Object> result = handler.execute(orderCtx, fc("feature.BASE_RISK"));
+
+            assertThat(result).containsKey("INS001");
+            @SuppressWarnings("unchecked")
+            Map<String, Object> featureMap = (Map<String, Object>) result.get("INS001");
+            assertThat(featureMap).containsEntry("TEST_FC", depData);
+        }
+
+        @Test
+        @DisplayName("entityType=feature → 多人各自读取自己的 acquiredFeatures")
+        void featureEntityTypeMultipleInsureds() {
+            InsuredFeatureContext ins1 = orderCtx.getAllInsuredContexts().get(0); // INS001
+            InsuredFeatureContext ins2 = orderCtx.getAllInsuredContexts().get(1); // INS002
+            ins1.getAcquiredFeatures().put("BASE_RISK", Map.of("riskScore", 85));
+            ins2.getAcquiredFeatures().put("BASE_RISK", Map.of("riskScore", 60));
+
+            Map<String, Object> result = handler.execute(orderCtx, fc("feature.BASE_RISK.riskScore"));
+
+            assertThat(result).containsKeys("INS001", "INS002");
+            @SuppressWarnings("unchecked")
+            Map<String, Object> f1 = (Map<String, Object>) result.get("INS001");
+            assertThat(f1).containsEntry("TEST_FC", 85);
+            @SuppressWarnings("unchecked")
+            Map<String, Object> f2 = (Map<String, Object>) result.get("INS002");
+            assertThat(f2).containsEntry("TEST_FC", 60);
+        }
+
+        @Test
+        @DisplayName("entityType=feature → StorageLevel=POLICY 的依赖特征从 polCtx.getPolicyFeatures 读取")
+        void featureEntityTypeFromPolicyLevel() {
+            // Store dep feature at POLICY level in the first policy
+            PolicyFeatureContext pol = orderCtx.getPolicies().get(0);
+            pol.getPolicyFeatures().put("POLICY_FEATURE", Map.of("score", 90));
+
+            // feature entityType iterates insureds, each resolves via resolveFeatureFromContext
+            Map<String, Object> result = handler.execute(orderCtx, fc("feature.POLICY_FEATURE.score"));
+
+            assertThat(result).containsKeys("INS001", "INS002");
+            @SuppressWarnings("unchecked")
+            Map<String, Object> f1 = (Map<String, Object>) result.get("INS001");
+            assertThat(f1).containsEntry("TEST_FC", 90);
+            @SuppressWarnings("unchecked")
+            Map<String, Object> f2 = (Map<String, Object>) result.get("INS002");
+            assertThat(f2).containsEntry("TEST_FC", 90);
+        }
+
+        @Test
+        @DisplayName("entityType=feature → 依赖特征不存在时返回 null")
+        void featureEntityTypeMissingDep() {
+            Map<String, Object> result = handler.execute(orderCtx, fc("feature.NONEXISTENT.riskScore"));
+
+            // All insureds get null values
+            assertThat(result).containsKeys("INS001", "INS002");
+            @SuppressWarnings("unchecked")
+            Map<String, Object> f1 = (Map<String, Object>) result.get("INS001");
+            assertThat(f1).containsEntry("TEST_FC", null);
+        }
     }
 
     @Nested
@@ -302,6 +383,39 @@ class ParamMappingCalcHandlerTest {
             @SuppressWarnings("unchecked")
             Map<String, Object> featureMap = (Map<String, Object>) result.get("APP001");
             assertThat(featureMap).containsEntry("TEST_FC", "投保人张三");
+        }
+
+        @Test
+        @DisplayName("entityType=feature → 从被保人 acquiredFeatures 读取依赖特征")
+        void featureEntityType() {
+            InsuredFeatureContext insCtx = polCtx.getInsureds().get(0); // INS001
+            insCtx.getAcquiredFeatures().put("BASE_RISK", Map.of("riskScore", 85, "fraudScore", 60));
+
+            Map<String, Object> result = handler.execute(polCtx, fc("feature.BASE_RISK.riskScore"));
+
+            assertThat(result).containsKey("INS001");
+            @SuppressWarnings("unchecked")
+            Map<String, Object> featureMap = (Map<String, Object>) result.get("INS001");
+            assertThat(featureMap).containsEntry("TEST_FC", 85);
+        }
+
+        @Test
+        @DisplayName("entityType=feature → POLICY 级遍历所有被保人各自读取")
+        void featureEntityTypeAllInsureds() {
+            InsuredFeatureContext ins1 = polCtx.getInsureds().get(0);
+            InsuredFeatureContext ins2 = polCtx.getInsureds().get(1);
+            ins1.getAcquiredFeatures().put("BASE_RISK", Map.of("riskScore", 85));
+            ins2.getAcquiredFeatures().put("BASE_RISK", Map.of("riskScore", 60));
+
+            Map<String, Object> result = handler.execute(polCtx, fc("feature.BASE_RISK.riskScore"));
+
+            assertThat(result).containsKeys("INS001", "INS002");
+            @SuppressWarnings("unchecked")
+            Map<String, Object> r1 = (Map<String, Object>) result.get("INS001");
+            assertThat(r1).containsEntry("TEST_FC", 85);
+            @SuppressWarnings("unchecked")
+            Map<String, Object> r2 = (Map<String, Object>) result.get("INS002");
+            assertThat(r2).containsEntry("TEST_FC", 60);
         }
 
         @Test

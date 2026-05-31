@@ -1,4 +1,0 @@
--------------------------------------------------------------------------------
-Test set: com.insurance.uw.domain.service.FeatureDependencyResolverTest$ComplexScenarios
--------------------------------------------------------------------------------
-Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.001 s -- in com.insurance.uw.domain.service.FeatureDependencyResolverTest$ComplexScenarios

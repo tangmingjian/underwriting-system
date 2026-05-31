@@ -1,0 +1,33 @@
+# ==================== Java / Maven ====================
+target/
+*.class
+*.jar
+*.war
+*.ear
+*.log
+!src/main/**/target/
+!src/test/**/target/
+
+# ==================== IntelliJ IDEA ====================
+.idea/
+*.iml
+*.iws
+*.ipr
+out/
+
+# ==================== OS ====================
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# ==================== Environment ====================
+.env
+.env.local
+.env.*.local
+*.env
+
+# ==================== Logs ====================
+logs/
+*.log

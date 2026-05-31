@@ -1,4 +1,0 @@
--------------------------------------------------------------------------------
-Test set: com.insurance.uw.domain.context.ContextHierarchyTest$OrderContextTests
--------------------------------------------------------------------------------
-Tests run: 13, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.008 s -- in com.insurance.uw.domain.context.ContextHierarchyTest$OrderContextTests

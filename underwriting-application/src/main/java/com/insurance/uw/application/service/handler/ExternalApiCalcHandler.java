@@ -66,10 +66,14 @@ public class ExternalApiCalcHandler implements FeatureCalcHandler {
         Map<String, Map<String, Object>> featureResults = (Map<String, Map<String, Object>>) groovyEngine.invoke(
                 outputScriptId, outScript.getScriptText(), "extractFeatures", response, ctx);
 
-        // 6. 展平为 Map
+        // 6. 用 featureCode 包裹每个 targetId 的结果
         Map<String, Object> result = new HashMap<>();
         if (featureResults != null) {
-            featureResults.forEach((targetId, featureMap) -> result.put(targetId, featureMap));
+            featureResults.forEach((targetId, featureData) -> {
+                Map<String, Object> wrapped = new HashMap<>();
+                wrapped.put(fc.getFeatureCode(), featureData);
+                result.put(targetId, wrapped);
+            });
         }
         return result;
     }

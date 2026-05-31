@@ -106,7 +106,7 @@ class ExternalApiCalcHandlerTest {
                     .thenReturn(response);
 
             Map<String, Map<String, Object>> extracted = Map.of(
-                    "INS001", Map.of("RISK_SCORE", 85)
+                    "INS001", Map.of("riskScore", 85, "fraudScore", 60)
             );
             when(groovyEngine.invoke("script-output-001", outScript.getScriptText(), "extractFeatures", response, ctx))
                     .thenReturn(extracted);
@@ -116,8 +116,12 @@ class ExternalApiCalcHandlerTest {
             assertThat(result).hasSize(1);
             assertThat(result).containsKey("INS001");
             @SuppressWarnings("unchecked")
-            Map<String, Object> featureMap = (Map<String, Object>) result.get("INS001");
-            assertThat(featureMap).containsEntry("RISK_SCORE", 85);
+            Map<String, Object> wrapped = (Map<String, Object>) result.get("INS001");
+            assertThat(wrapped).containsKey("RISK_SCORE");
+            @SuppressWarnings("unchecked")
+            Map<String, Object> featureData = (Map<String, Object>) wrapped.get("RISK_SCORE");
+            assertThat(featureData).containsEntry("riskScore", 85);
+            assertThat(featureData).containsEntry("fraudScore", 60);
 
             verify(apiClient).call(any(ServiceConfig.class), eq(request));
         }
@@ -177,8 +181,8 @@ class ExternalApiCalcHandlerTest {
             when(apiClient.call(any(), any())).thenReturn(Map.of());
 
             Map<String, Map<String, Object>> extracted = Map.of(
-                    "INS001", Map.of("RISK_SCORE", 85),
-                    "INS002", Map.of("RISK_SCORE", 72)
+                    "INS001", Map.of("riskScore", 85, "fraudScore", 60),
+                    "INS002", Map.of("riskScore", 60, "fraudScore", 80)
             );
             when(groovyEngine.invoke(eq("script-output-001"), any(), eq("extractFeatures"), any(), any()))
                     .thenReturn(extracted);
@@ -187,6 +191,20 @@ class ExternalApiCalcHandlerTest {
 
             assertThat(result).hasSize(2);
             assertThat(result).containsKeys("INS001", "INS002");
+            // Verify INS001 wrapped with featureCode
+            @SuppressWarnings("unchecked")
+            Map<String, Object> wrapped1 = (Map<String, Object>) result.get("INS001");
+            assertThat(wrapped1).containsKey("RISK_SCORE");
+            @SuppressWarnings("unchecked")
+            Map<String, Object> data1 = (Map<String, Object>) wrapped1.get("RISK_SCORE");
+            assertThat(data1).containsEntry("riskScore", 85);
+            // Verify INS002 wrapped with featureCode
+            @SuppressWarnings("unchecked")
+            Map<String, Object> wrapped2 = (Map<String, Object>) result.get("INS002");
+            assertThat(wrapped2).containsKey("RISK_SCORE");
+            @SuppressWarnings("unchecked")
+            Map<String, Object> data2 = (Map<String, Object>) wrapped2.get("RISK_SCORE");
+            assertThat(data2).containsEntry("riskScore", 60);
         }
     }
 

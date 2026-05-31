@@ -89,10 +89,24 @@ public class ParamMappingCalcHandler implements FeatureCalcHandler {
                 }
                 break;
             }
+            case "feature": {
+                // fieldName = "BASE_RISK.riskScore" → depFeatureCode = "BASE_RISK", subPath = "riskScore"
+                int dot = fieldName.indexOf('.');
+                String depFeatureCode = dot > 0 ? fieldName.substring(0, dot) : fieldName;
+                String subPath = dot > 0 ? fieldName.substring(dot + 1) : null;
+
+                for (InsuredFeatureContext insCtx : ctx.getInsuredsForFeature(fc.getFeatureCode())) {
+                    Object depResult = resolveFeatureFromContext(insCtx, depFeatureCode);
+                    Object value = subPath != null ? readFieldValue(depResult, subPath) : depResult;
+                    result.put(insCtx.getInsuredId(),
+                            Collections.singletonMap(fc.getFeatureCode(), value));
+                }
+                break;
+            }
             default:
                 throw new IllegalArgumentException(
                         "特征 " + fc.getFeatureCode() + " 的 entityType 无效: " + entityType
-                                + "，支持: order, policy, insured, applicant");
+                                + "，支持: order, policy, insured, applicant, feature");
         }
 
         return result;
@@ -134,18 +148,63 @@ public class ParamMappingCalcHandler implements FeatureCalcHandler {
                 }
                 break;
             }
+            case "feature": {
+                int dot = fieldName.indexOf('.');
+                String depFeatureCode = dot > 0 ? fieldName.substring(0, dot) : fieldName;
+                String subPath = dot > 0 ? fieldName.substring(dot + 1) : null;
+
+                for (InsuredFeatureContext insCtx : polCtx.getInsureds()) {
+                    Object depResult = resolveFeatureFromContext(insCtx, depFeatureCode);
+                    Object value = subPath != null ? readFieldValue(depResult, subPath) : depResult;
+                    result.put(insCtx.getInsuredId(),
+                            Collections.singletonMap(fc.getFeatureCode(), value));
+                }
+                break;
+            }
             default:
                 throw new IllegalArgumentException(
                         "特征 " + fc.getFeatureCode() + " 的 entityType 无效: " + entityType
-                                + "，支持: order, policy, insured, applicant");
+                                + "，支持: order, policy, insured, applicant, feature");
         }
 
         return result;
     }
 
     /**
+     * 按 StorageLevel 优先级查找依赖特征结果：INSURED → APPLICANT → POLICY → ORDER
+     */
+    private Object resolveFeatureFromContext(InsuredFeatureContext insCtx, String depFeatureCode) {
+        // 1. INSURED level
+        Object val = insCtx.getAcquiredFeatures().get(depFeatureCode);
+        if (val != null) return val;
+
+        PolicyFeatureContext polCtx = insCtx.getPolicyContext();
+        if (polCtx != null) {
+            // 2. APPLICANT level
+            ApplicantFeatureContext appCtx = polCtx.getApplicantCtx();
+            if (appCtx != null) {
+                val = appCtx.getFeatures().get(depFeatureCode);
+                if (val != null) return val;
+            }
+
+            // 3. POLICY level
+            val = polCtx.getPolicyFeatures().get(depFeatureCode);
+            if (val != null) return val;
+
+            // 4. ORDER level
+            OrderFeatureContext orderCtx = polCtx.getOrderContext();
+            if (orderCtx != null) {
+                val = orderCtx.getOrderFeatures().get(depFeatureCode);
+                if (val != null) return val;
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * 通过反射 + 缓存 Method 读取实体字段值，零硬编码，支持任意嵌套深度。
-     * 实体为 null 时返回 null。
+     * 实体为 null 时返回 null。同时支持 Map 类型的路径导航。
      */
     private Object readFieldValue(Object entity, String path) {
         if (entity == null) return null;
@@ -153,12 +212,16 @@ public class ParamMappingCalcHandler implements FeatureCalcHandler {
         Object current = entity;
         for (String segment : path.split("\\.")) {
             if (current == null) return null;
-            Method getter = getGetter(current.getClass(), segment);
-            try {
-                current = getter.invoke(current);
-            } catch (Exception e) {
-                throw new RuntimeException(
-                        "读取字段失败: " + path + " from " + entity.getClass().getSimpleName(), e);
+            if (current instanceof Map) {
+                current = ((Map<?, ?>) current).get(segment);
+            } else {
+                Method getter = getGetter(current.getClass(), segment);
+                try {
+                    current = getter.invoke(current);
+                } catch (Exception e) {
+                    throw new RuntimeException(
+                            "读取字段失败: " + path + " from " + entity.getClass().getSimpleName(), e);
+                }
             }
         }
         return current;
