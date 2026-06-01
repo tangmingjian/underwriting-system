@@ -67,13 +67,13 @@ INSERT INTO t_feature_script (script_id, script_name, script_type, script_text, 
         if (insCtx != null) {
             // 合并策略：如果已有结果，取最高分
             Map existing = result.get(insCtx.insuredId, [:])
-            int existingScore = (existing["ins.creditScore"] ?: 0) as int
+            int existingScore = (existing["score"] ?: 0) as int
             if (score > existingScore) {
                 result[insCtx.insuredId] = [
-                    "ins.creditScore" : score,
-                    "ins.creditLevel" : level,
-                    "ins.creditCustNo": custNo,
-                    "ins.creditTime"  : scoreTime ?: System.currentTimeMillis()
+                    "score"  : score,
+                    "level"  : level,
+                    "custNo" : custNo,
+                    "time"   : scoreTime ?: System.currentTimeMillis()
                 ]
             }
             return  // groovy each closure continue
@@ -84,9 +84,9 @@ INSERT INTO t_feature_script (script_id, script_name, script_type, script_text, 
             def app = polCtx.applicantCtx
             if ((app.customerNos ?: [app.applicantId]).contains(custNo)) {
                 result[app.applicantId] = [
-                    "app.creditScore" : score,
-                    "app.creditLevel" : level,
-                    "app.creditCustNo": custNo
+                    "score" : score,
+                    "level" : level,
+                    "custNo": custNo
                 ]
             }
         }
@@ -94,7 +94,7 @@ INSERT INTO t_feature_script (script_id, script_name, script_type, script_text, 
 
     // 订单级汇总风险等级
     if (response?.data?.orderRiskLevel != null) {
-        result["__ORDER__"] = ["ord.creditRiskLevel": response.data.orderRiskLevel]
+        result["__ORDER__"] = ["riskLevel": response.data.orderRiskLevel]
     }
     return result
 }', 1, 'ACTIVE', '同人客户号模式：按 customerNo 反查被保人/投保人，合并多客户号结果（取最高分）');
@@ -153,11 +153,11 @@ INSERT INTO t_feature_script (script_id, script_name, script_type, script_text, 
     List   hitCustNos = response?.data?.hitCustomerNos ?: []
 
     Map orderFeatures = [
-        "ord.fraudRiskScore" : riskScore,
-        "ord.fraudRiskLevel" : riskLevel,
-        "ord.fraudHitRules"  : hitRules.join(","),
-        "ord.fraudHitCustNos": hitCustNos.join(","),
-        "ord.fraudTime"      : System.currentTimeMillis()
+        "riskScore"  : riskScore,
+        "riskLevel"  : riskLevel,
+        "hitRules"   : hitRules.join(","),
+        "hitCustNos" : hitCustNos.join(","),
+        "time"       : System.currentTimeMillis()
     ]
     return ["__ORDER__": orderFeatures]
 }', 1, 'ACTIVE', '反欺诈结果直接写入订单级特征');
@@ -215,12 +215,12 @@ INSERT INTO t_feature_script (script_id, script_name, script_type, script_text, 
         if (insCtx != null) {
             // 合并策略：取最高风险等级
             Map existing = result.get(insCtx.insuredId, [:])
-            int existClass = (existing["ins.occupationRiskClass"] ?: 0) as int
+            int existClass = (existing["riskClass"] ?: 0) as int
             if (riskClass > existClass) {
                 result[insCtx.insuredId] = [
-                    "ins.occupationRiskClass": riskClass,
-                    "ins.occupationRiskDesc" : riskDesc,
-                    "ins.occupationCustNo"   : custNo
+                    "riskClass": riskClass,
+                    "riskDesc" : riskDesc,
+                    "custNo"   : custNo
                 ]
             }
         }
@@ -290,10 +290,10 @@ INSERT INTO t_feature_script (script_id, script_name, script_type, script_text, 
     }
 
     result[app.applicantId] = [
-        "app.incomeVerified"  : allVerified && !matchCustNos.isEmpty(),
-        "app.auditedIncome"   : maxAudited,
-        "app.incomeLevel"     : bestLevel,
-        "app.incomeMatchCustNos": matchCustNos.join(",")
+        "incomeVerified"  : allVerified && !matchCustNos.isEmpty(),
+        "auditedIncome"   : maxAudited,
+        "incomeLevel"     : bestLevel,
+        "matchCustNos"    : matchCustNos.join(",")
     ]
     return result
 }', 1, 'ACTIVE', '多客户号收入结果合并：全验证通过才为true，取最高收入值');
@@ -329,8 +329,8 @@ INSERT INTO t_feature_script (script_id, script_name, script_type, script_text, 
     double maxDailyPremium = (response?.data?.maxDailyPremium ?: 0) as double
     return [
         (polCtx.policyId): [
-            "pol.maxSumAssured"   : maxSumAssured,
-            "pol.maxDailyPremium" : maxDailyPremium
+            "maxSumAssured"   : maxSumAssured,
+            "maxDailyPremium" : maxDailyPremium
         ]
     ]
 }', 1, 'ACTIVE', '产品保额限制直接存入保单特征');
@@ -349,34 +349,34 @@ INSERT INTO t_feature_config (
 -- 核保规则
 -- ============================================================
 
--- 被保人信用评分 >= 600
+-- 被保人信用评分 >= 600（从语义 Map 中取 score 子字段）
 INSERT INTO t_underwriting_rule (rule_code, rule_name, rule_type, expression, feature_codes, product_code, priority, status) VALUES
 ('RULE_CREDIT_001', '信用评分达标', 'INSURED',
- '#root[''ins.creditScore''] >= 600',
+ '#root[''ins.creditScore''][''score''] >= 600',
  'ins.creditScore', 'HEALTH_A_001', 10, 1);
 
--- 反欺诈风险评分 < 80
+-- 反欺诈风险评分 < 80（从语义 Map 中取 riskScore 子字段）
 INSERT INTO t_underwriting_rule (rule_code, rule_name, rule_type, expression, feature_codes, product_code, priority, status) VALUES
 ('RULE_FRAUD_001', '反欺诈风险可控', 'INSURED',
- '#root[''ord.fraudRiskScore''] < 80',
+ '#root[''ord.fraudRiskScore''][''riskScore''] < 80',
  'ord.fraudRiskScore', 'HEALTH_A_001', 5, 1);
 
--- 职业风险等级 ≤ 3
+-- 职业风险等级 ≤ 3（从语义 Map 中取 riskClass 子字段）
 INSERT INTO t_underwriting_rule (rule_code, rule_name, rule_type, expression, feature_codes, product_code, priority, status) VALUES
 ('RULE_OCCUPATION_001', '职业风险等级检查', 'INSURED',
- '#root[''ins.occupationRiskClass''] <= 3',
+ '#root[''ins.occupationRisk''][''riskClass''] <= 3',
  'ins.occupationRisk', 'ACCIDENT_B_002', 20, 1);
 
--- 投保人收入核验必须通过
+-- 投保人收入核验必须通过（从语义 Map 中取 incomeVerified 子字段）
 INSERT INTO t_underwriting_rule (rule_code, rule_name, rule_type, expression, feature_codes, product_code, priority, status) VALUES
 ('RULE_INCOME_001', '投保人收入核验', 'APPLICANT',
- '#root[''app.incomeVerified''] == true',
+ '#root[''app.incomeVerified''][''incomeVerified''] == true',
  'app.incomeVerified', 'HEALTH_A_001', 15, 1);
 
--- 保额上限检查
+-- 保额上限检查（从语义 Map 中取 maxSumAssured 子字段）
 INSERT INTO t_underwriting_rule (rule_code, rule_name, rule_type, expression, feature_codes, product_code, priority, status) VALUES
 ('RULE_PRODUCT_001', '保额上限检查', 'POLICY',
- '#root[''pol.maxSumAssured''] > 0',
+ '#root[''pol.maxSumAssured''][''maxSumAssured''] > 0',
  'pol.maxSumAssured', 'ACCIDENT_B_002', 25, 1);
 
 -- ============================================================
@@ -454,6 +454,98 @@ INSERT INTO t_underwriting_rule (rule_code, rule_name, rule_type, expression, fe
 ('RULE_GENDER_001', '被保人性别有效性', 'INSURED',
  '#root[''ins.gender''] != null',
  'ins.gender', 'HEALTH_A_001', 10, 1);
+
+-- ============================================================
+-- 场景 11：批量特征复用 — 一次 API 调用，多个特征各自取子字段
+-- BASE_RISK (EXTERNAL_API) → RISK_SCORE / FRAUD_CHECK (PARAM_MAPPING)
+-- ============================================================
+
+INSERT INTO t_feature_script (script_id, script_name, script_type, script_text, version, status, description) VALUES
+('buildBaseRiskReq', '基础风险-入参映射', 'INPUT',
+'Map buildRequest(OrderFeatureContext ctx) {
+    List<Map> persons = []
+    ctx.getInsuredsForFeature("BASE_RISK").each { insCtx ->
+        persons << [
+            customerNos: insCtx.customerNos ?: [insCtx.insuredId],
+            name       : insCtx.name,
+            idNo       : insCtx.idNo,
+            refId      : insCtx.insuredId
+        ]
+    }
+    return [
+        orderNo    : ctx.orderId,
+        channelCode: ctx.channel ?: "ONLINE",
+        persons    : persons
+    ]
+}', 1, 'ACTIVE', '批量查询：一次请求打包所有被保人'),
+
+('extractBaseRisk', '基础风险-出参提取', 'OUTPUT',
+'Map<String, Map<String, Object>> extractFeatures(Map response, OrderFeatureContext ctx) {
+    Map<String, Map<String, Object>> result = [:]
+
+    // 下游返回按人组织的数据：risks[i] = { refId, riskScore, fraudScore, amlFlag }
+    List risks = response?.data?.risks ?: []
+    risks.each { item ->
+        String refId      = item.refId as String
+        int    riskScore  = (item.riskScore ?: 0) as int
+        int    fraudScore = (item.fraudScore ?: 0) as int
+        boolean amlFlag  = item.amlFlag ?: false
+
+        result[refId] = [
+            "riskScore"  : riskScore,
+            "fraudScore" : fraudScore,
+            "amlFlag"    : amlFlag
+        ]
+    }
+    return result
+}', 1, 'ACTIVE', '语义化字段名：riskScore / fraudScore / amlFlag，Handler 包裹 featureCode 后存入上下文');
+
+-- BASE_RISK：批量查询基础风险数据（ORDER 聚合, INSURED 存储）
+INSERT INTO t_feature_config (
+    feature_code, feature_name, category, data_type, calc_type,
+    calc_config, aggregation, storage_level,
+    version, ttl_seconds, source_system, owner, status, depends_on
+) VALUES (
+    'BASE_RISK', '基础风险批量查询', 'ATOMIC', 'JSON', 'EXTERNAL_API',
+    '{"service":{"discovery_type":"STATIC","static_endpoints":["https://api.risk.internal.com"],"protocol":"HTTPS","path":"/v1/risk/batch","method":"POST","timeout_ms":3000},"input_script_id":"buildBaseRiskReq","output_script_id":"extractBaseRisk"}',
+    'ORDER', 'INSURED', 1, 300, 'risk-engine', 'admin', 'DRAFT',
+    '[]'
+);
+
+-- RISK_SCORE：从 BASE_RISK 中提取 riskScore 子字段（新 feature 实体类型）
+INSERT INTO t_feature_config (
+    feature_code, feature_name, category, data_type, calc_type,
+    calc_config, aggregation, storage_level,
+    version, ttl_seconds, source_system, owner, status, depends_on
+) VALUES (
+    'RISK_SCORE', '风险评分', 'ATOMIC', 'INT', 'PARAM_MAPPING',
+    '{"source":"feature.BASE_RISK.riskScore"}',
+    'ORDER', 'INSURED', 1, -1, 'request', 'admin', 'DRAFT',
+    '["BASE_RISK"]'
+);
+
+-- FRAUD_CHECK：从 BASE_RISK 中提取 fraudScore 子字段（新 feature 实体类型）
+INSERT INTO t_feature_config (
+    feature_code, feature_name, category, data_type, calc_type,
+    calc_config, aggregation, storage_level,
+    version, ttl_seconds, source_system, owner, status, depends_on
+) VALUES (
+    'FRAUD_CHECK', '反欺诈检查', 'ATOMIC', 'INT', 'PARAM_MAPPING',
+    '{"source":"feature.BASE_RISK.fraudScore"}',
+    'ORDER', 'INSURED', 1, -1, 'request', 'admin', 'DRAFT',
+    '["BASE_RISK"]'
+);
+
+-- 对应规则
+INSERT INTO t_underwriting_rule (rule_code, rule_name, rule_type, expression, feature_codes, product_code, priority, status) VALUES
+('RULE_BATCH_RISK_001', '风险评分达标', 'INSURED',
+ '#root[''RISK_SCORE''] >= 60',
+ 'RISK_SCORE', 'HEALTH_A_001', 8, 1);
+
+INSERT INTO t_underwriting_rule (rule_code, rule_name, rule_type, expression, feature_codes, product_code, priority, status) VALUES
+('RULE_BATCH_FRAUD_001', '反欺诈检查通过', 'INSURED',
+ '#root[''FRAUD_CHECK''] < 80',
+ 'FRAUD_CHECK', 'HEALTH_A_001', 7, 1);
 
 -- ============================================================
 -- 同人客户号模式总结

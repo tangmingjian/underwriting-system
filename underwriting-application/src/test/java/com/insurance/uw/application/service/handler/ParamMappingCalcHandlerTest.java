@@ -4,6 +4,7 @@ import com.insurance.uw.common.enums.CalcType;
 import com.insurance.uw.domain.context.*;
 import com.insurance.uw.domain.model.entity.*;
 import com.insurance.uw.domain.model.valueobject.CalcConfig;
+import com.insurance.uw.feature.core.handler.ParamMappingCalcHandler;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -98,7 +99,6 @@ class ParamMappingCalcHandlerTest {
             cc.setSource("policy.product.productCode");
             config.setCalcConfig(cc);
 
-            // "policy.product.productCode" → entityType="policy", fieldName="product.productCode"
             Map<String, Object> result = handler.execute(orderCtx, config);
 
             assertThat(result).containsKey("POL001");
@@ -200,7 +200,6 @@ class ParamMappingCalcHandlerTest {
         @Test
         @DisplayName("entityType=insured → 遍历相关被保人，读取 Insured 字段")
         void insuredEntityType() {
-            // inject mapping so getInsuredsForFeature works
             orderCtx.setFeatureInsuredMapping(Map.of("TEST_FC", java.util.Set.of("INS001")));
             Map<String, Object> result = handler.execute(orderCtx, fc("insured.age"));
 
@@ -235,8 +234,7 @@ class ParamMappingCalcHandlerTest {
         @Test
         @DisplayName("entityType=feature → 从被保人 acquiredFeatures 读取依赖特征并提取子字段")
         void featureEntityType() {
-            // Populate INS001's acquiredFeatures with a BASE_RISK result (from ExternalApiCalcHandler)
-            InsuredFeatureContext insCtx = orderCtx.getAllInsuredContexts().get(0); // INS001
+            InsuredFeatureContext insCtx = orderCtx.getAllInsuredContexts().get(0);
             insCtx.getAcquiredFeatures().put("BASE_RISK", Map.of("riskScore", 85, "fraudScore", 60));
 
             Map<String, Object> result = handler.execute(orderCtx, fc("feature.BASE_RISK.riskScore"));
@@ -265,8 +263,8 @@ class ParamMappingCalcHandlerTest {
         @Test
         @DisplayName("entityType=feature → 多人各自读取自己的 acquiredFeatures")
         void featureEntityTypeMultipleInsureds() {
-            InsuredFeatureContext ins1 = orderCtx.getAllInsuredContexts().get(0); // INS001
-            InsuredFeatureContext ins2 = orderCtx.getAllInsuredContexts().get(1); // INS002
+            InsuredFeatureContext ins1 = orderCtx.getAllInsuredContexts().get(0);
+            InsuredFeatureContext ins2 = orderCtx.getAllInsuredContexts().get(1);
             ins1.getAcquiredFeatures().put("BASE_RISK", Map.of("riskScore", 85));
             ins2.getAcquiredFeatures().put("BASE_RISK", Map.of("riskScore", 60));
 
@@ -284,11 +282,9 @@ class ParamMappingCalcHandlerTest {
         @Test
         @DisplayName("entityType=feature → StorageLevel=POLICY 的依赖特征从 polCtx.getPolicyFeatures 读取")
         void featureEntityTypeFromPolicyLevel() {
-            // Store dep feature at POLICY level in the first policy
             PolicyFeatureContext pol = orderCtx.getPolicies().get(0);
             pol.getPolicyFeatures().put("POLICY_FEATURE", Map.of("score", 90));
 
-            // feature entityType iterates insureds, each resolves via resolveFeatureFromContext
             Map<String, Object> result = handler.execute(orderCtx, fc("feature.POLICY_FEATURE.score"));
 
             assertThat(result).containsKeys("INS001", "INS002");
@@ -305,7 +301,6 @@ class ParamMappingCalcHandlerTest {
         void featureEntityTypeMissingDep() {
             Map<String, Object> result = handler.execute(orderCtx, fc("feature.NONEXISTENT.riskScore"));
 
-            // All insureds get null values
             assertThat(result).containsKeys("INS001", "INS002");
             @SuppressWarnings("unchecked")
             Map<String, Object> f1 = (Map<String, Object>) result.get("INS001");
@@ -388,7 +383,7 @@ class ParamMappingCalcHandlerTest {
         @Test
         @DisplayName("entityType=feature → 从被保人 acquiredFeatures 读取依赖特征")
         void featureEntityType() {
-            InsuredFeatureContext insCtx = polCtx.getInsureds().get(0); // INS001
+            InsuredFeatureContext insCtx = polCtx.getInsureds().get(0);
             insCtx.getAcquiredFeatures().put("BASE_RISK", Map.of("riskScore", 85, "fraudScore", 60));
 
             Map<String, Object> result = handler.execute(polCtx, fc("feature.BASE_RISK.riskScore"));
@@ -421,7 +416,6 @@ class ParamMappingCalcHandlerTest {
         @Test
         @DisplayName("entityType=order 但在 POLICY 级没有 orderContext → 跳过")
         void orderEntityTypeNoOrderContext() {
-            // Create a PolicyFeatureContext without a parent OrderFeatureContext
             Policy orphanPolicy = new Policy("POL_ORPHAN", new Product("P", "p"), null, List.of());
             PolicyFeatureContext orphanCtx = new PolicyFeatureContext(orphanPolicy, null);
 
@@ -453,9 +447,7 @@ class ParamMappingCalcHandlerTest {
             cc.setSource("insured.age");
             config.setCalcConfig(cc);
 
-            // First call populates cache
             handler.execute(orderCtx, config);
-            // Second call should use cache
             Map<String, Object> result = handler.execute(orderCtx, config);
 
             assertThat(result).containsKeys("INS001", "INS002");
@@ -469,7 +461,6 @@ class ParamMappingCalcHandlerTest {
         @Test
         @DisplayName("读取 null 实体 → 返回 null 值")
         void nullEntity() {
-            // Order with no policies → null applicant through policy chain
             FeatureConfig config = new FeatureConfig();
             config.setFeatureCode("FC");
             CalcConfig cc = new CalcConfig();

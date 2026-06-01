@@ -2,13 +2,14 @@ package com.insurance.uw.bootstrap;
 
 import com.insurance.uw.application.service.FeatureConfigApplicationService;
 import com.insurance.uw.application.service.RuleApplicationService;
-import com.insurance.uw.application.service.UnderwritingApplicationService;
-import com.insurance.uw.application.service.handler.CompositeCalcHandler;
-import com.insurance.uw.application.service.handler.DatabaseQueryCalcHandler;
-import com.insurance.uw.application.service.handler.ExpressionCalcHandler;
-import com.insurance.uw.application.service.handler.ExternalApiCalcHandler;
-import com.insurance.uw.application.service.handler.FeatureCalcHandler;
-import com.insurance.uw.application.service.handler.ParamMappingCalcHandler;
+import com.insurance.uw.feature.api.FeatureExtractionService;
+import com.insurance.uw.feature.core.handler.CompositeCalcHandler;
+import com.insurance.uw.feature.core.handler.DatabaseQueryCalcHandler;
+import com.insurance.uw.feature.core.handler.ExpressionCalcHandler;
+import com.insurance.uw.feature.core.handler.ExternalApiCalcHandler;
+import com.insurance.uw.feature.core.handler.FeatureCalcHandler;
+import com.insurance.uw.feature.core.handler.ParamMappingCalcHandler;
+import com.insurance.uw.feature.core.impl.FeatureExtractionServiceImpl;
 import com.insurance.uw.domain.repository.FeatureConfigRepository;
 import com.insurance.uw.domain.repository.FeatureScriptRepository;
 import com.insurance.uw.domain.repository.UnderwritingRuleRepository;
@@ -28,13 +29,11 @@ import org.springframework.context.annotation.Configuration;
 public class ApplicationServiceConfiguration {
 
     @Bean
-    public UnderwritingApplicationService underwritingApplicationService(
+    public FeatureExtractionService featureExtractionService(
             FeatureConfigRepository featureConfigRepository,
-            UnderwritingRuleRepository ruleRepository,
             ExecutorService featureExecutor,
             List<FeatureCalcHandler> handlers) {
-        return new UnderwritingApplicationService(featureConfigRepository,
-                ruleRepository, featureExecutor, handlers);
+        return new FeatureExtractionServiceImpl(featureConfigRepository, featureExecutor, handlers);
     }
 
     @Bean

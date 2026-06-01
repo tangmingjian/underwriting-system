@@ -1,4 +1,4 @@
-package com.insurance.uw.application.service.handler;
+package com.insurance.uw.feature.core.handler;
 
 import com.insurance.uw.common.enums.CalcType;
 import com.insurance.uw.domain.model.entity.FeatureConfig;

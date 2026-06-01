@@ -20,6 +20,10 @@
             <artifactId>underwriting-domain</artifactId>
         </dependency>
         <dependency>
+            <groupId>com.insurance.uw</groupId>
+            <artifactId>underwriting-feature</artifactId>
+        </dependency>
+        <dependency>
             <groupId>org.springframework</groupId>
             <artifactId>spring-context</artifactId>
         </dependency>

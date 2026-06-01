@@ -12,6 +12,9 @@ public enum RuleType {
     APPLICANT,
 
     /** 保单级规则 */
-    POLICY
+    POLICY,
+
+    /** 订单级规则 */
+    ORDER
 
 }

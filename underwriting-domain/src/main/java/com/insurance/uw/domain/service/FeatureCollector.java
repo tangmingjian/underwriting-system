@@ -2,6 +2,7 @@ package com.insurance.uw.domain.service;
 
 import com.insurance.uw.domain.context.ApplicantFeatureContext;
 import com.insurance.uw.domain.context.InsuredFeatureContext;
+import com.insurance.uw.domain.context.OrderFeatureContext;
 import com.insurance.uw.domain.context.PolicyFeatureContext;
 
 import java.util.LinkedHashMap;
@@ -20,24 +21,20 @@ public class FeatureCollector {
     public static Map<String, Object> collectForInsured(InsuredFeatureContext insCtx) {
         Map<String, Object> all = new LinkedHashMap<>();
 
-        // 订单特征
         if (insCtx.getOrderContext() != null) {
             all.putAll(insCtx.getOrderContext().getOrderFeatures());
         }
 
-        // 保单特征
         PolicyFeatureContext polCtx = insCtx.getPolicyContext();
         if (polCtx != null) {
             all.putAll(polCtx.getPolicyFeatures());
 
-            // 投保人特征
             ApplicantFeatureContext appCtx = polCtx.getApplicantCtx();
             if (appCtx != null) {
                 all.putAll(appCtx.getFeatures());
             }
         }
 
-        // 被保人自身特征（最后放入，可覆盖同名特征）
         all.putAll(insCtx.getAcquiredFeatures());
 
         return all;
@@ -49,15 +46,12 @@ public class FeatureCollector {
     public static Map<String, Object> collectForApplicant(PolicyFeatureContext polCtx) {
         Map<String, Object> all = new LinkedHashMap<>();
 
-        // 订单特征
         if (polCtx.getOrderContext() != null) {
             all.putAll(polCtx.getOrderContext().getOrderFeatures());
         }
 
-        // 保单特征
         all.putAll(polCtx.getPolicyFeatures());
 
-        // 投保人自身特征
         ApplicantFeatureContext appCtx = polCtx.getApplicantCtx();
         if (appCtx != null) {
             all.putAll(appCtx.getFeatures());
@@ -72,15 +66,20 @@ public class FeatureCollector {
     public static Map<String, Object> collectForPolicy(PolicyFeatureContext polCtx) {
         Map<String, Object> all = new LinkedHashMap<>();
 
-        // 订单特征
         if (polCtx.getOrderContext() != null) {
             all.putAll(polCtx.getOrderContext().getOrderFeatures());
         }
 
-        // 保单自身特征
         all.putAll(polCtx.getPolicyFeatures());
 
         return all;
+    }
+
+    /**
+     * 收集订单维度的所有特征（仅有订单级特征）
+     */
+    public static Map<String, Object> collectForOrder(OrderFeatureContext orderCtx) {
+        return new LinkedHashMap<>(orderCtx.getOrderFeatures());
     }
 
 }

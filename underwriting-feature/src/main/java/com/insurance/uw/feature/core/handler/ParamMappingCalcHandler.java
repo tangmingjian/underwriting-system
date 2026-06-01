@@ -1,4 +1,4 @@
-package com.insurance.uw.application.service.handler;
+package com.insurance.uw.feature.core.handler;
 
 import com.insurance.uw.common.enums.CalcType;
 import com.insurance.uw.domain.context.ApplicantFeatureContext;
@@ -90,7 +90,6 @@ public class ParamMappingCalcHandler implements FeatureCalcHandler {
                 break;
             }
             case "feature": {
-                // fieldName = "BASE_RISK.riskScore" → depFeatureCode = "BASE_RISK", subPath = "riskScore"
                 int dot = fieldName.indexOf('.');
                 String depFeatureCode = dot > 0 ? fieldName.substring(0, dot) : fieldName;
                 String subPath = dot > 0 ? fieldName.substring(dot + 1) : null;
@@ -174,24 +173,20 @@ public class ParamMappingCalcHandler implements FeatureCalcHandler {
      * 按 StorageLevel 优先级查找依赖特征结果：INSURED → APPLICANT → POLICY → ORDER
      */
     private Object resolveFeatureFromContext(InsuredFeatureContext insCtx, String depFeatureCode) {
-        // 1. INSURED level
         Object val = insCtx.getAcquiredFeatures().get(depFeatureCode);
         if (val != null) return val;
 
         PolicyFeatureContext polCtx = insCtx.getPolicyContext();
         if (polCtx != null) {
-            // 2. APPLICANT level
             ApplicantFeatureContext appCtx = polCtx.getApplicantCtx();
             if (appCtx != null) {
                 val = appCtx.getFeatures().get(depFeatureCode);
                 if (val != null) return val;
             }
 
-            // 3. POLICY level
             val = polCtx.getPolicyFeatures().get(depFeatureCode);
             if (val != null) return val;
 
-            // 4. ORDER level
             OrderFeatureContext orderCtx = polCtx.getOrderContext();
             if (orderCtx != null) {
                 val = orderCtx.getOrderFeatures().get(depFeatureCode);

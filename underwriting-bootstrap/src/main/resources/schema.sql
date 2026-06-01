@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS t_feature_config (
     data_type       ENUM('INT','DECIMAL','STRING','BOOLEAN','JSON','ARRAY') NOT NULL DEFAULT 'STRING' COMMENT '特征值数据类型',
     calc_type       ENUM('PARAM_MAPPING','EXPRESSION','EXTERNAL_API','DATABASE_QUERY','COMPOSITE') NOT NULL DEFAULT 'EXTERNAL_API' COMMENT '计算类型',
     calc_config     JSON          NOT NULL COMMENT '计算配置（根据calc_type存储不同结构）',
-    aggregation     VARCHAR(20)   NOT NULL DEFAULT 'POLICY' COMMENT '聚合级别: ORDER / POLICY',
+    aggregation     VARCHAR(20)   NOT NULL DEFAULT 'POLICY' COMMENT '聚合级别: ORDER / POLICY / INSURED / APPLICANT',
     storage_level   VARCHAR(20)   NOT NULL DEFAULT 'INSURED' COMMENT '存储级别: INSURED / APPLICANT / POLICY / ORDER',
     version         INT           DEFAULT 1 COMMENT '配置版本号',
     default_value   VARCHAR(256)  COMMENT '默认值',
@@ -45,7 +45,7 @@ CREATE TABLE IF NOT EXISTS t_underwriting_rule (
     id            BIGINT AUTO_INCREMENT PRIMARY KEY,
     rule_code     VARCHAR(50)   NOT NULL UNIQUE COMMENT '规则编码',
     rule_name     VARCHAR(100)  COMMENT '规则名称',
-    rule_type     VARCHAR(20)   NOT NULL COMMENT '规则类型: INSURED / APPLICANT / POLICY',
+    rule_type     VARCHAR(20)   NOT NULL COMMENT '规则类型: INSURED / APPLICANT / POLICY / ORDER',
     expression    VARCHAR(1000) NOT NULL COMMENT 'SpEL表达式',
     feature_codes VARCHAR(500)  COMMENT '依赖的特征码，逗号分隔',
     product_code  VARCHAR(50)   COMMENT '适用产品码，关联 t_feature_config 中的产品',
@@ -82,19 +82,15 @@ CREATE TABLE IF NOT EXISTS t_underwriting_rule (
 -- 完整 INSERT 示例
 -- =============================================
 
--- -- 1. 插入脚本
+-- -- 1. 插入脚本（语义化字段名，Handler 用 featureCode 包裹）
 -- INSERT INTO t_feature_script (script_id, script_name, script_type, script_text, version, status)
 -- VALUES ('buildCreditScoreRequest', '信用评分入参映射', 'INPUT',
 -- 'Map buildRequest(OrderFeatureContext ctx) {
---     List<Map> applicants = []
---     ctx.allInsuredContexts.each { insCtx ->
---         applicants << [idNo: insCtx.insured.idNo ?: insCtx.insuredId, name: insCtx.insured.name, roleType: "INSURED"]
+--     List<Map> persons = []
+--     ctx.getInsuredsForFeature("ins.creditScore").each { insCtx ->
+--         persons << [customerNos: insCtx.customerNos ?: [insCtx.insuredId], name: insCtx.name, idNo: insCtx.idNo, refId: insCtx.insuredId]
 --     }
---     ctx.policies.each { polCtx ->
---         def app = polCtx.applicantCtx.applicant
---         applicants << [idNo: app.idNo ?: app.id, name: app.name, roleType: "APPLICANT"]
---     }
---     return [orderNo: ctx.orderId, channelCode: ctx.channel ?: "ONLINE", queryType: "CREDIT_SCORE", applicants: applicants]
+--     return [orderNo: ctx.orderId, channelCode: ctx.channel ?: "ONLINE", persons: persons]
 -- }', 1, 'ACTIVE');
 --
 -- INSERT INTO t_feature_script (script_id, script_name, script_type, script_text, version, status)
@@ -103,13 +99,9 @@ CREATE TABLE IF NOT EXISTS t_underwriting_rule (
 --     Map<String, Map<String, Object>> result = [:]
 --     List scores = response?.data?.scores ?: []
 --     scores.each { item ->
---         String idNo = item.idNo as String
---         InsuredFeatureContext insCtx = ctx.allInsuredContexts.find { (it.insured.idNo ?: it.insuredId) == idNo }
---         if (insCtx != null) {
---             result[insCtx.insuredId] = ["ins.creditScore": (item.score ?: 0) as int, "ins.creditLevel": item.level ?: "C"]
---         }
+--         String refId = item.refId as String
+--         result[refId] = ["score": (item.score ?: 0) as int, "level": item.level ?: "C"]
 --     }
---     if (response?.data?.orderRiskLevel != null) result["__ORDER__"] = ["ord.creditRiskLevel": response.data.orderRiskLevel]
 --     return result
 -- }', 1, 'ACTIVE');
 --

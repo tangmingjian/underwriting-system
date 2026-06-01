@@ -9,6 +9,12 @@ public enum AggregationLevel {
     ORDER,
 
     /** 投保单级聚合：按投保单维度分别请求 */
-    POLICY
+    POLICY,
+
+    /** 被保人级：每个被保人独立执行一次 */
+    INSURED,
+
+    /** 投保人级：每个投保人独立执行一次 */
+    APPLICANT
 
 }

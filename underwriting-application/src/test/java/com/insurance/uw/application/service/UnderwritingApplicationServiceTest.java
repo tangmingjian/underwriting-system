@@ -1,6 +1,5 @@
 package com.insurance.uw.application.service;
 
-import com.insurance.uw.application.service.handler.FeatureCalcHandler;
 import com.insurance.uw.common.enums.AggregationLevel;
 import com.insurance.uw.common.enums.CalcType;
 import com.insurance.uw.common.enums.FeatureStatus;
@@ -8,7 +7,10 @@ import com.insurance.uw.common.enums.StorageLevel;
 import com.insurance.uw.domain.model.entity.*;
 import com.insurance.uw.domain.model.valueobject.CalcConfig;
 import com.insurance.uw.domain.repository.FeatureConfigRepository;
-import com.insurance.uw.domain.repository.UnderwritingRuleRepository;
+import com.insurance.uw.feature.api.FeatureExtractionRequest;
+import com.insurance.uw.feature.api.FeatureExtractionResult;
+import com.insurance.uw.feature.core.handler.FeatureCalcHandler;
+import com.insurance.uw.feature.core.impl.FeatureExtractionServiceImpl;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -17,18 +19,16 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.*;
 
-@DisplayName("UnderwritingApplicationService - 核保应用服务")
+@DisplayName("FeatureExtractionServiceImpl - 特征取数服务")
 @ExtendWith(MockitoExtension.class)
 class UnderwritingApplicationServiceTest {
 
@@ -36,21 +36,18 @@ class UnderwritingApplicationServiceTest {
     private FeatureConfigRepository featureConfigRepository;
 
     @Mock
-    private UnderwritingRuleRepository ruleRepository;
-
-    @Mock
     private FeatureCalcHandler mockHandler;
 
     private ExecutorService executor;
 
-    private UnderwritingApplicationService service;
+    private FeatureExtractionServiceImpl service;
 
     @BeforeEach
     void setUp() {
         executor = Executors.newFixedThreadPool(2);
         when(mockHandler.getSupportedType()).thenReturn(CalcType.PARAM_MAPPING);
-        service = new UnderwritingApplicationService(
-                featureConfigRepository, ruleRepository, executor,
+        service = new FeatureExtractionServiceImpl(
+                featureConfigRepository, executor,
                 List.of(mockHandler));
     }
 
@@ -77,52 +74,59 @@ class UnderwritingApplicationServiceTest {
         return fc;
     }
 
+    private FeatureExtractionRequest buildRequest(Order order, Set<String> featureCodes) {
+        FeatureExtractionRequest req = new FeatureExtractionRequest();
+        req.setOrder(order);
+        req.setFeatureCodes(featureCodes);
+        return req;
+    }
+
     @Nested
-    @DisplayName("processOrder 整体流程")
-    class ProcessOrder {
+    @DisplayName("extract 整体流程")
+    class Extract {
 
         @Test
         @DisplayName("无保单的订单 → 正常返回空结果")
         void emptyOrder() {
             Order order = new Order("ORD001", "ONLINE", null, List.of());
-            when(featureConfigRepository.findAllEnabled()).thenReturn(List.of());
+            FeatureExtractionRequest req = buildRequest(order, Set.of());
 
-            var result = service.processOrder(order);
+            FeatureExtractionResult result = service.extract(req);
 
             assertThat(result).isNotNull();
-            assertThat(result.getPolicies()).isEmpty();
             assertThat(result.getOrderFeatures()).isEmpty();
+            assertThat(result.getPolicyFeatures()).isEmpty();
         }
 
         @Test
-        @DisplayName("无特征配置 → 提前返回（无特征收集和拓扑排序）")
-        void noFeatureConfigs() {
+        @DisplayName("featureCodes 为空 → 跳过取数直接返回")
+        void noFeatureCodes() {
             Order order = createTestOrder();
-            when(featureConfigRepository.findAllEnabled()).thenReturn(List.of());
+            FeatureExtractionRequest req = buildRequest(order, Set.of());
 
-            var result = service.processOrder(order);
+            FeatureExtractionResult result = service.extract(req);
 
             assertThat(result).isNotNull();
-            verify(featureConfigRepository, never()).findByFeatureCodes(anyList());
+            verify(featureConfigRepository, never()).findByFeatureCodes(any());
         }
 
         @Test
-        @DisplayName("有特征配置但无规则 → 正常执行特征取数")
-        void featuresWithoutRules() {
+        @DisplayName("有特征配置 → 正常执行特征取数")
+        void featuresExtracted() {
             Order order = createTestOrder();
             FeatureConfig fc = createFeatureConfig("AGE", CalcType.PARAM_MAPPING,
                     AggregationLevel.ORDER, StorageLevel.INSURED);
 
-            when(featureConfigRepository.findAllEnabled()).thenReturn(List.of(fc));
-            when(ruleRepository.findAllEnabled()).thenReturn(List.of());
-            when(featureConfigRepository.findByFeatureCodes(List.of("AGE")))
-                    .thenReturn(List.of(fc));
+            when(featureConfigRepository.findByFeatureCodes(any())).thenReturn(List.of(fc));
             when(mockHandler.execute(any(), eq(fc)))
                     .thenReturn(Map.of("INS001", Map.of("AGE", 35)));
 
-            var result = service.processOrder(order);
+            FeatureExtractionRequest req = buildRequest(order, Set.of("AGE"));
+            FeatureExtractionResult result = service.extract(req);
 
             assertThat(result).isNotNull();
+            assertThat(result.getInsuredFeatures()).containsKey("INS001");
+            assertThat(result.getInsuredFeatures().get("INS001")).containsEntry("AGE", 35);
             verify(mockHandler).execute(any(), eq(fc));
         }
 
@@ -133,439 +137,231 @@ class UnderwritingApplicationServiceTest {
             FeatureConfig fc = createFeatureConfig("AGE", CalcType.PARAM_MAPPING,
                     AggregationLevel.ORDER, StorageLevel.INSURED);
 
-            when(featureConfigRepository.findAllEnabled()).thenReturn(List.of(fc));
-            when(ruleRepository.findAllEnabled()).thenReturn(List.of());
-            when(featureConfigRepository.findByFeatureCodes(List.of("AGE")))
-                    .thenReturn(List.of(fc));
+            when(featureConfigRepository.findByFeatureCodes(any())).thenReturn(List.of(fc));
             when(mockHandler.execute(any(), eq(fc)))
                     .thenThrow(new RuntimeException("网络超时"));
 
-            assertThatThrownBy(() -> service.processOrder(order))
+            FeatureExtractionRequest req = buildRequest(order, Set.of("AGE"));
+
+            assertThatThrownBy(() -> service.extract(req))
                     .isInstanceOf(RuntimeException.class)
                     .hasMessageContaining("执行特征 AGE 失败");
         }
     }
 
     @Nested
-    @DisplayName("buildFeatureInsuredMapping - 特征→被保人/保单映射")
-    class FeatureInsuredMapping {
+    @DisplayName("expandDependencies - 传递依赖展开")
+    class ExpandDependencies {
 
         @Test
-        @DisplayName("规则匹配产品 → 映射所有被保人")
-        void rulesMatchProduct() {
-            Order order = createTestOrder();
+        @DisplayName("请求 B，B dependsOn=[A] → 展开为 {A, B}")
+        void transitiveExpansion() {
+            FeatureConfig fcA = new FeatureConfig();
+            fcA.setFeatureCode("A");
+            fcA.setCalcType(CalcType.PARAM_MAPPING);
+            fcA.setStatus(FeatureStatus.ACTIVE);
 
-            UnderwritingRule rule = new UnderwritingRule();
-            rule.setProductCode("PROD001");
-            rule.setFeatureCodes("RISK_SCORE,AGE");
-            rule.setStatus(1);
+            FeatureConfig fcB = new FeatureConfig();
+            fcB.setFeatureCode("B");
+            fcB.setCalcType(CalcType.PARAM_MAPPING);
+            fcB.setDependsOn(List.of("A"));
+            fcB.setStatus(FeatureStatus.ACTIVE);
 
-            FeatureConfig fc1 = createFeatureConfig("RISK_SCORE", CalcType.PARAM_MAPPING,
-                    AggregationLevel.ORDER, StorageLevel.INSURED);
-            FeatureConfig fc2 = createFeatureConfig("AGE", CalcType.PARAM_MAPPING,
-                    AggregationLevel.ORDER, StorageLevel.INSURED);
+            Set<String> expanded = service.expandDependencies(
+                    Set.of("B"), Map.of("A", fcA, "B", fcB));
 
-            when(featureConfigRepository.findAllEnabled()).thenReturn(List.of(fc1, fc2));
-            when(ruleRepository.findAllEnabled()).thenReturn(List.of(rule));
-            when(featureConfigRepository.findByFeatureCodes(anyList()))
-                    .thenReturn(List.of(fc1, fc2));
-            when(mockHandler.execute(any(), any()))
-                    .thenReturn(Map.of("INS001", Map.of("RISK_SCORE", 80)));
-
-            service.processOrder(order);
-            // No exception = success. The mapping was built and used.
+            assertThat(expanded).containsExactly("B", "A");
         }
 
         @Test
-        @DisplayName("产品码不匹配 → 规则被跳过，无映射")
-        void productCodeMismatch() {
-            Order order = createTestOrder();
+        @DisplayName("无依赖 → 返回原集合")
+        void noDependencies() {
+            FeatureConfig fc = new FeatureConfig();
+            fc.setFeatureCode("X");
+            fc.setCalcType(CalcType.PARAM_MAPPING);
+            fc.setStatus(FeatureStatus.ACTIVE);
 
-            UnderwritingRule rule = new UnderwritingRule();
-            rule.setProductCode("OTHER_PROD"); // does not match PROD001
-            rule.setFeatureCodes("RISK_SCORE");
-            rule.setStatus(1);
+            Set<String> expanded = service.expandDependencies(
+                    Set.of("X"), Map.of("X", fc));
 
-            when(featureConfigRepository.findAllEnabled()).thenReturn(List.of());
-            when(ruleRepository.findAllEnabled()).thenReturn(List.of(rule));
-
-            var result = service.processOrder(order);
-
-            assertThat(result).isNotNull();
-            // Rule was ignored, no features to load
-            verify(featureConfigRepository, never()).findByFeatureCodes(anyList());
+            assertThat(expanded).containsExactly("X");
         }
 
         @Test
-        @DisplayName("product_code 为 null → 适用于所有产品（向后兼容）")
-        void nullProductCodeAppliesToAll() {
-            Order order = createTestOrder();
+        @DisplayName("深度链 A→B→C → 请求 C 展开为 {C, B, A}")
+        void deepChain() {
+            FeatureConfig fcA = new FeatureConfig();
+            fcA.setFeatureCode("A");
+            fcA.setStatus(FeatureStatus.ACTIVE);
 
-            UnderwritingRule rule = new UnderwritingRule();
-            rule.setProductCode(null); // backward compat
-            rule.setFeatureCodes("AGE");
-            rule.setStatus(1);
+            FeatureConfig fcB = new FeatureConfig();
+            fcB.setFeatureCode("B");
+            fcB.setDependsOn(List.of("A"));
+            fcB.setStatus(FeatureStatus.ACTIVE);
 
-            FeatureConfig fc = createFeatureConfig("AGE", CalcType.PARAM_MAPPING,
-                    AggregationLevel.ORDER, StorageLevel.INSURED);
+            FeatureConfig fcC = new FeatureConfig();
+            fcC.setFeatureCode("C");
+            fcC.setDependsOn(List.of("B"));
+            fcC.setStatus(FeatureStatus.ACTIVE);
 
-            when(featureConfigRepository.findAllEnabled()).thenReturn(List.of(fc));
-            when(ruleRepository.findAllEnabled()).thenReturn(List.of(rule));
-            when(featureConfigRepository.findByFeatureCodes(List.of("AGE")))
-                    .thenReturn(List.of(fc));
-            when(mockHandler.execute(any(), eq(fc)))
-                    .thenReturn(Map.of("INS001", Map.of("AGE", 35)));
+            Set<String> expanded = service.expandDependencies(
+                    Set.of("C"), Map.of("A", fcA, "B", fcB, "C", fcC));
 
-            var result = service.processOrder(order);
-
-            assertThat(result).isNotNull();
-            verify(mockHandler).execute(any(), eq(fc));
+            assertThat(expanded).containsExactly("C", "B", "A");
         }
 
         @Test
-        @DisplayName("feature_codes 为空 → 规则被跳过")
-        void emptyFeatureCodes() {
-            Order order = createTestOrder();
+        @DisplayName("已包含的依赖不重复展开（循环安全）")
+        void noDuplicateExpansion() {
+            FeatureConfig fcA = new FeatureConfig();
+            fcA.setFeatureCode("A");
+            fcA.setStatus(FeatureStatus.ACTIVE);
 
-            UnderwritingRule rule = new UnderwritingRule();
-            rule.setProductCode("PROD001");
-            rule.setFeatureCodes("  "); // blank
-            rule.setStatus(1);
+            FeatureConfig fcB = new FeatureConfig();
+            fcB.setFeatureCode("B");
+            fcB.setDependsOn(List.of("A"));
+            fcB.setStatus(FeatureStatus.ACTIVE);
 
-            when(featureConfigRepository.findAllEnabled()).thenReturn(List.of());
-            when(ruleRepository.findAllEnabled()).thenReturn(List.of(rule));
+            Set<String> expanded = service.expandDependencies(
+                    Set.of("A", "B"), Map.of("A", fcA, "B", fcB));
 
-            var result = service.processOrder(order);
-
-            assertThat(result).isNotNull();
-            verify(featureConfigRepository, never()).findByFeatureCodes(anyList());
-        }
-
-        @Test
-        @DisplayName("feature_codes 包含空格 → trim 后正常处理")
-        void featureCodesWithSpaces() {
-            Order order = createTestOrder();
-
-            UnderwritingRule rule = new UnderwritingRule();
-            rule.setProductCode("PROD001");
-            rule.setFeatureCodes(" AGE , SCORE "); // with spaces
-            rule.setStatus(1);
-
-            FeatureConfig fc1 = createFeatureConfig("AGE", CalcType.PARAM_MAPPING,
-                    AggregationLevel.ORDER, StorageLevel.INSURED);
-            FeatureConfig fc2 = createFeatureConfig("SCORE", CalcType.PARAM_MAPPING,
-                    AggregationLevel.ORDER, StorageLevel.INSURED);
-
-            when(featureConfigRepository.findAllEnabled()).thenReturn(List.of(fc1, fc2));
-            when(ruleRepository.findAllEnabled()).thenReturn(List.of(rule));
-            when(featureConfigRepository.findByFeatureCodes(anyList()))
-                    .thenReturn(List.of(fc1, fc2));
-            when(mockHandler.execute(any(), any()))
-                    .thenReturn(Map.of("INS001", Map.of("AGE", 35)));
-
-            service.processOrder(order);
-            // No exception
+            assertThat(expanded).hasSize(2);
         }
     }
 
     @Nested
-    @DisplayName("executeLayer - 分层并行执行")
+    @DisplayName("featureToInsuredIds / featureToPolicyIds 映射注入")
+    class MappingInjection {
+
+        @Test
+        @DisplayName("特征→被保人映射 → FeatureExtractionResult 包含对应 insured")
+        void insuredMapping() {
+            Order order = createTestOrder();
+            FeatureConfig fc = createFeatureConfig("AGE", CalcType.PARAM_MAPPING,
+                    AggregationLevel.ORDER, StorageLevel.INSURED);
+
+            when(featureConfigRepository.findByFeatureCodes(any())).thenReturn(List.of(fc));
+            when(mockHandler.execute(any(), eq(fc)))
+                    .thenReturn(Map.of("INS001", Map.of("AGE", 35)));
+
+            FeatureExtractionRequest req = new FeatureExtractionRequest();
+            req.setOrder(order);
+            req.setFeatureCodes(Set.of("AGE"));
+            req.setFeatureToInsuredIds(Map.of("AGE", Set.of("INS001")));
+
+            FeatureExtractionResult result = service.extract(req);
+
+            assertThat(result.getInsuredFeatures()).containsKey("INS001");
+        }
+    }
+
+    @Nested
+    @DisplayName("分层并行执行")
     class LayerExecution {
 
         @Test
-        @DisplayName("ORDER 级特征 → 传入 OrderFeatureContext")
+        @DisplayName("ORDER 级特征 → 结果写入 orderFeatures")
         void orderLevelFeature() {
             Order order = createTestOrder();
             FeatureConfig fc = createFeatureConfig("AGE", CalcType.PARAM_MAPPING,
                     AggregationLevel.ORDER, StorageLevel.ORDER);
 
-            when(featureConfigRepository.findAllEnabled()).thenReturn(List.of(fc));
-            when(ruleRepository.findAllEnabled()).thenReturn(List.of());
-            when(featureConfigRepository.findByFeatureCodes(List.of("AGE")))
-                    .thenReturn(List.of(fc));
+            when(featureConfigRepository.findByFeatureCodes(any())).thenReturn(List.of(fc));
             when(mockHandler.execute(any(), eq(fc)))
                     .thenReturn(Map.of("__ORDER__", Map.of("AGE", "ONLINE")));
 
-            var result = service.processOrder(order);
+            FeatureExtractionRequest req = buildRequest(order, Set.of("AGE"));
+            FeatureExtractionResult result = service.extract(req);
 
             assertThat(result.getOrderFeatures()).containsEntry("AGE", "ONLINE");
         }
 
         @Test
-        @DisplayName("POLICY 级特征 → 传入 PolicyFeatureContext")
+        @DisplayName("POLICY 级特征 → 结果写入 policyFeatures")
         void policyLevelFeature() {
             Order order = createTestOrder();
             FeatureConfig fc = createFeatureConfig("SCORE", CalcType.PARAM_MAPPING,
                     AggregationLevel.POLICY, StorageLevel.POLICY);
 
-            when(featureConfigRepository.findAllEnabled()).thenReturn(List.of(fc));
-            when(ruleRepository.findAllEnabled()).thenReturn(List.of());
-            when(featureConfigRepository.findByFeatureCodes(List.of("SCORE")))
-                    .thenReturn(List.of(fc));
+            when(featureConfigRepository.findByFeatureCodes(any())).thenReturn(List.of(fc));
             when(mockHandler.execute(any(), eq(fc)))
                     .thenReturn(Map.of("POL001", Map.of("SCORE", 75)));
 
-            var result = service.processOrder(order);
+            FeatureExtractionRequest req = buildRequest(order, Set.of("SCORE"));
+            FeatureExtractionResult result = service.extract(req);
 
-            assertThat(result.getPolicies().get(0).getPolicyFeatures())
-                    .containsEntry("SCORE", 75);
+            assertThat(result.getPolicyFeatures()).containsKey("POL001");
+            assertThat(result.getPolicyFeatures().get("POL001")).containsEntry("SCORE", 75);
         }
     }
 
     @Nested
-    @DisplayName("storeResults - 存储级别分发")
+    @DisplayName("结果存储 — 各级别分发")
     class StoreResults {
 
-        @Nested
-        @DisplayName("ORDER 特征存储（storeResults）")
-        class OrderStoreResults {
-
-            private FeatureConfig fc(StorageLevel storageLevel) {
-                return createFeatureConfig("FC", CalcType.PARAM_MAPPING,
-                        AggregationLevel.ORDER, storageLevel);
-            }
-
-            @Test
-            @DisplayName("StorageLevel=INSURED → 按 targetId 找到被保人并存储")
-            void storeToInsured() {
-                Order order = createTestOrder();
-                FeatureConfig feature = fc(StorageLevel.INSURED);
-
-                when(featureConfigRepository.findAllEnabled()).thenReturn(List.of(feature));
-                when(ruleRepository.findAllEnabled()).thenReturn(List.of());
-                when(featureConfigRepository.findByFeatureCodes(List.of("FC")))
-                        .thenReturn(List.of(feature));
-                when(mockHandler.execute(any(), eq(feature)))
-                        .thenReturn(Map.of("INS001", 35));
-
-                var result = service.processOrder(order);
-
-                var insCtx = result.findInsuredCtx("INS001");
-                assertThat(insCtx.getAcquiredFeatures()).containsEntry("FC", 35);
-            }
-
-            @Test
-            @DisplayName("StorageLevel=POLICY → 按 targetId 找到保单并存储")
-            void storeToPolicy() {
-                Order order = createTestOrder();
-                FeatureConfig feature = fc(StorageLevel.POLICY);
-
-                when(featureConfigRepository.findAllEnabled()).thenReturn(List.of(feature));
-                when(ruleRepository.findAllEnabled()).thenReturn(List.of());
-                when(featureConfigRepository.findByFeatureCodes(List.of("FC")))
-                        .thenReturn(List.of(feature));
-                when(mockHandler.execute(any(), eq(feature)))
-                        .thenReturn(Map.of("POL001", 75));
-
-                var result = service.processOrder(order);
-
-                assertThat(result.findPolicyCtx("POL001").getPolicyFeatures())
-                        .containsEntry("FC", 75);
-            }
-
-            @Test
-            @DisplayName("StorageLevel=APPLICANT → 按 targetId 找到保单的投保人并存储")
-            void storeToApplicant() {
-                Order order = createTestOrder();
-                FeatureConfig feature = fc(StorageLevel.APPLICANT);
-
-                when(featureConfigRepository.findAllEnabled()).thenReturn(List.of(feature));
-                when(ruleRepository.findAllEnabled()).thenReturn(List.of());
-                when(featureConfigRepository.findByFeatureCodes(List.of("FC")))
-                        .thenReturn(List.of(feature));
-                when(mockHandler.execute(any(), eq(feature)))
-                        .thenReturn(Map.of("POL001", 42));
-
-                var result = service.processOrder(order);
-
-                var appCtx = result.findPolicyCtx("POL001").getApplicantCtx();
-                assertThat(appCtx.getFeatures()).containsEntry("FC", 42);
-            }
-
-            @Test
-            @DisplayName("StorageLevel=ORDER → 直接写入 orderFeatures")
-            void storeToOrder() {
-                Order order = createTestOrder();
-                FeatureConfig feature = fc(StorageLevel.ORDER);
-
-                when(featureConfigRepository.findAllEnabled()).thenReturn(List.of(feature));
-                when(ruleRepository.findAllEnabled()).thenReturn(List.of());
-                when(featureConfigRepository.findByFeatureCodes(List.of("FC")))
-                        .thenReturn(List.of(feature));
-                when(mockHandler.execute(any(), eq(feature)))
+        private FeatureExtractionRequest req(Order order, StorageLevel storageLevel, AggregationLevel agg) {
+            FeatureConfig fc = createFeatureConfig("FC", CalcType.PARAM_MAPPING, agg, storageLevel);
+            when(featureConfigRepository.findByFeatureCodes(any())).thenReturn(List.of(fc));
+            if (storageLevel == StorageLevel.ORDER) {
+                when(mockHandler.execute(any(), eq(fc)))
                         .thenReturn(Map.of("__ORDER__", "ONLINE"));
-
-                var result = service.processOrder(order);
-
-                assertThat(result.getOrderFeatures()).containsEntry("FC", "ONLINE");
+            } else {
+                when(mockHandler.execute(any(), eq(fc))).thenReturn(Map.of("INS001", 35));
             }
-
-            @Test
-            @DisplayName("返回值为 Map 时 → 直接展开")
-            void resultIsMap() {
-                Order order = createTestOrder();
-                FeatureConfig feature = fc(StorageLevel.ORDER);
-
-                when(featureConfigRepository.findAllEnabled()).thenReturn(List.of(feature));
-                when(ruleRepository.findAllEnabled()).thenReturn(List.of());
-                when(featureConfigRepository.findByFeatureCodes(List.of("FC")))
-                        .thenReturn(List.of(feature));
-                // Return a Map directly
-                Map<String, Object> resultMap = Map.of("__ORDER__", Map.of("FC", "MODE1", "EXTRA", "V2"));
-                when(mockHandler.execute(any(), eq(feature))).thenReturn(resultMap);
-
-                var result = service.processOrder(order);
-
-                assertThat(result.getOrderFeatures())
-                        .containsEntry("FC", "MODE1")
-                        .containsEntry("EXTRA", "V2");
-            }
-
-            @Test
-            @DisplayName("返回值为单值 → 包装为 singletonMap key=featureCode")
-            void resultIsSingleValue() {
-                Order order = createTestOrder();
-                FeatureConfig feature = fc(StorageLevel.INSURED);
-
-                when(featureConfigRepository.findAllEnabled()).thenReturn(List.of(feature));
-                when(ruleRepository.findAllEnabled()).thenReturn(List.of());
-                when(featureConfigRepository.findByFeatureCodes(List.of("FC")))
-                        .thenReturn(List.of(feature));
-                // Return a single value (not a Map)
-                when(mockHandler.execute(any(), eq(feature)))
-                        .thenReturn(Map.of("INS001", 35));
-
-                var result = service.processOrder(order);
-
-                var insCtx = result.findInsuredCtx("INS001");
-                assertThat(insCtx.getAcquiredFeatures()).containsEntry("FC", 35);
-            }
-
-            @Test
-            @DisplayName("targetId 找不到对应被保人 → 跳过（不抛异常）")
-            void targetIdNotFound() {
-                Order order = createTestOrder();
-                FeatureConfig feature = fc(StorageLevel.INSURED);
-
-                when(featureConfigRepository.findAllEnabled()).thenReturn(List.of(feature));
-                when(ruleRepository.findAllEnabled()).thenReturn(List.of());
-                when(featureConfigRepository.findByFeatureCodes(List.of("FC")))
-                        .thenReturn(List.of(feature));
-                // targetId "NONEXISTENT" doesn't match any insured
-                when(mockHandler.execute(any(), eq(feature)))
-                        .thenReturn(Map.of("NONEXISTENT", 35));
-
-                // Should not throw
-                var result = service.processOrder(order);
-                assertThat(result).isNotNull();
-            }
-
-            @Test
-            @DisplayName("返回 null → 跳过存储")
-            void nullResults() {
-                Order order = createTestOrder();
-                FeatureConfig feature = fc(StorageLevel.INSURED);
-
-                when(featureConfigRepository.findAllEnabled()).thenReturn(List.of(feature));
-                when(ruleRepository.findAllEnabled()).thenReturn(List.of());
-                when(featureConfigRepository.findByFeatureCodes(List.of("FC")))
-                        .thenReturn(List.of(feature));
-                when(mockHandler.execute(any(), eq(feature))).thenReturn(null);
-
-                var result = service.processOrder(order);
-
-                assertThat(result.findInsuredCtx("INS001").getAcquiredFeatures()).isEmpty();
-            }
+            return buildRequest(order, Set.of("FC"));
         }
 
-        @Nested
-        @DisplayName("POLICY 特征存储（storePolicyResults）")
-        class PolicyStoreResults {
+        @Test
+        @DisplayName("StorageLevel=INSURED → 写入 insuredFeatures")
+        void storeToInsured() {
+            Order order = createTestOrder();
+            FeatureExtractionResult result = service.extract(
+                    req(order, StorageLevel.INSURED, AggregationLevel.ORDER));
 
-            private FeatureConfig fc(StorageLevel storageLevel) {
-                return createFeatureConfig("FC", CalcType.PARAM_MAPPING,
-                        AggregationLevel.POLICY, storageLevel);
-            }
+            assertThat(result.getInsuredFeatures()).containsKey("INS001");
+        }
 
-            @Test
-            @DisplayName("StorageLevel=INSURED → 存储到对应被保人")
-            void storeToInsured() {
-                Order order = createTestOrder();
-                FeatureConfig feature = fc(StorageLevel.INSURED);
+        @Test
+        @DisplayName("StorageLevel=POLICY → 写入 policyFeatures")
+        void storeToPolicy() {
+            Order order = createTestOrder();
+            FeatureConfig fc = createFeatureConfig("FC", CalcType.PARAM_MAPPING,
+                    AggregationLevel.ORDER, StorageLevel.POLICY);
+            when(featureConfigRepository.findByFeatureCodes(any())).thenReturn(List.of(fc));
+            when(mockHandler.execute(any(), eq(fc))).thenReturn(Map.of("POL001", 75));
 
-                when(featureConfigRepository.findAllEnabled()).thenReturn(List.of(feature));
-                when(ruleRepository.findAllEnabled()).thenReturn(List.of());
-                when(featureConfigRepository.findByFeatureCodes(List.of("FC")))
-                        .thenReturn(List.of(feature));
-                when(mockHandler.execute(any(), eq(feature)))
-                        .thenReturn(Map.of("INS001", 35));
+            FeatureExtractionResult result = service.extract(buildRequest(order, Set.of("FC")));
 
-                var result = service.processOrder(order);
+            assertThat(result.getPolicyFeatures()).containsKey("POL001");
+        }
 
-                var insCtx = result.findInsuredCtx("INS001");
-                assertThat(insCtx.getAcquiredFeatures()).containsEntry("FC", 35);
-            }
+        @Test
+        @DisplayName("StorageLevel=APPLICANT → 写入 applicantFeatures")
+        void storeToApplicant() {
+            Order order = createTestOrder();
+            FeatureConfig fc = createFeatureConfig("FC", CalcType.PARAM_MAPPING,
+                    AggregationLevel.ORDER, StorageLevel.APPLICANT);
+            when(featureConfigRepository.findByFeatureCodes(any())).thenReturn(List.of(fc));
+            when(mockHandler.execute(any(), eq(fc))).thenReturn(Map.of("POL001", 42));
 
-            @Test
-            @DisplayName("StorageLevel=APPLICANT → 存储到当前保单的投保人")
-            void storeToApplicant() {
-                Order order = createTestOrder();
-                FeatureConfig feature = fc(StorageLevel.APPLICANT);
+            FeatureExtractionResult result = service.extract(buildRequest(order, Set.of("FC")));
 
-                when(featureConfigRepository.findAllEnabled()).thenReturn(List.of(feature));
-                when(ruleRepository.findAllEnabled()).thenReturn(List.of());
-                when(featureConfigRepository.findByFeatureCodes(List.of("FC")))
-                        .thenReturn(List.of(feature));
-                when(mockHandler.execute(any(), eq(feature)))
-                        .thenReturn(Map.of("APP001", 42));
+            assertThat(result.getApplicantFeatures()).containsKey("APP001");
+        }
 
-                var result = service.processOrder(order);
+        @Test
+        @DisplayName("StorageLevel=ORDER → 写入 orderFeatures")
+        void storeToOrder() {
+            Order order = createTestOrder();
+            FeatureExtractionResult result = service.extract(
+                    req(order, StorageLevel.ORDER, AggregationLevel.ORDER));
 
-                var appCtx = result.getPolicies().get(0).getApplicantCtx();
-                assertThat(appCtx.getFeatures()).containsEntry("FC", 42);
-            }
-
-            @Test
-            @DisplayName("StorageLevel=POLICY → 存储到当前保单")
-            void storeToPolicy() {
-                Order order = createTestOrder();
-                FeatureConfig feature = fc(StorageLevel.POLICY);
-
-                when(featureConfigRepository.findAllEnabled()).thenReturn(List.of(feature));
-                when(ruleRepository.findAllEnabled()).thenReturn(List.of());
-                when(featureConfigRepository.findByFeatureCodes(List.of("FC")))
-                        .thenReturn(List.of(feature));
-                when(mockHandler.execute(any(), eq(feature)))
-                        .thenReturn(Map.of("POL001", 75));
-
-                var result = service.processOrder(order);
-
-                assertThat(result.getPolicies().get(0).getPolicyFeatures())
-                        .containsEntry("FC", 75);
-            }
-
-            @Test
-            @DisplayName("StorageLevel=ORDER → 向上写入 orderFeatures")
-            void storeToOrder() {
-                Order order = createTestOrder();
-                FeatureConfig feature = fc(StorageLevel.ORDER);
-
-                when(featureConfigRepository.findAllEnabled()).thenReturn(List.of(feature));
-                when(ruleRepository.findAllEnabled()).thenReturn(List.of());
-                when(featureConfigRepository.findByFeatureCodes(List.of("FC")))
-                        .thenReturn(List.of(feature));
-                when(mockHandler.execute(any(), eq(feature)))
-                        .thenReturn(Map.of("__ORDER__", "ONLINE"));
-
-                var result = service.processOrder(order);
-
-                assertThat(result.getOrderFeatures()).containsEntry("FC", "ONLINE");
-            }
+            assertThat(result.getOrderFeatures()).containsEntry("FC", "ONLINE");
         }
     }
 
     @Nested
-    @DisplayName("executeByCalcType - 多 Handler 分发")
+    @DisplayName("calcType 分发")
     class HandlerDispatch {
 
         @Test
@@ -574,14 +370,12 @@ class UnderwritingApplicationServiceTest {
             Order order = createTestOrder();
             FeatureConfig fc = createFeatureConfig("FC", CalcType.EXTERNAL_API,
                     AggregationLevel.ORDER, StorageLevel.ORDER);
-            // Our mockHandler only supports PARAM_MAPPING
 
-            when(featureConfigRepository.findAllEnabled()).thenReturn(List.of(fc));
-            when(ruleRepository.findAllEnabled()).thenReturn(List.of());
-            when(featureConfigRepository.findByFeatureCodes(List.of("FC")))
-                    .thenReturn(List.of(fc));
+            when(featureConfigRepository.findByFeatureCodes(any())).thenReturn(List.of(fc));
 
-            assertThatThrownBy(() -> service.processOrder(order))
+            FeatureExtractionRequest req = buildRequest(order, Set.of("FC"));
+
+            assertThatThrownBy(() -> service.extract(req))
                     .getRootCause()
                     .isInstanceOf(IllegalArgumentException.class);
         }

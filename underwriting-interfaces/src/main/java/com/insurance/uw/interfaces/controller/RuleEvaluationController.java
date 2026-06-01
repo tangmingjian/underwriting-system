@@ -11,23 +11,23 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 /**
- * 核保执行 REST API（向下兼容端点）
+ * 规则评估 REST API — 独立端点：请求构建 → 取数 → 评估
  */
 @RestController
-@RequestMapping("/api/underwriting")
-public class UnderwritingController {
+@RequestMapping("/api/rule")
+public class RuleEvaluationController {
 
-    private final FeatureExtractionService featureService;
     private final RuleApplicationService ruleService;
+    private final FeatureExtractionService featureService;
 
-    public UnderwritingController(FeatureExtractionService featureService,
-                                   RuleApplicationService ruleService) {
-        this.featureService = featureService;
+    public RuleEvaluationController(RuleApplicationService ruleService,
+                                     FeatureExtractionService featureService) {
         this.ruleService = ruleService;
+        this.featureService = featureService;
     }
 
     /**
-     * 提交订单执行核保（特征取数 + 规则评估）
+     * 执行规则评估（含特征取数）
      */
     @PostMapping("/evaluate")
     public List<UnderwritingResult> evaluate(@RequestBody Order order) {
@@ -35,14 +35,4 @@ public class UnderwritingController {
         FeatureExtractionResult result = featureService.extract(request);
         return ruleService.evaluate(order, result);
     }
-
-    /**
-     * 仅执行特征取数（不评估规则），返回扁平化结果供调试
-     */
-    @PostMapping("/extract")
-    public FeatureExtractionResult extract(@RequestBody Order order) {
-        FeatureExtractionRequest request = ruleService.buildExtractionRequest(order);
-        return featureService.extract(request);
-    }
-
 }

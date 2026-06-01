@@ -1,5 +1,6 @@
 package com.insurance.uw.domain.service;
 
+import com.insurance.uw.common.enums.AggregationLevel;
 import com.insurance.uw.domain.model.entity.FeatureConfig;
 
 import java.util.*;
@@ -31,6 +32,11 @@ public class FeatureDependencyResolver {
                     if (!featureCodes.contains(dep)) {
                         throw new IllegalStateException(
                                 "特征 " + fc + " 依赖 " + dep + "，但该特征未包含在本次执行计划中");
+                    }
+                    // 校验依赖方向：只允许依赖上级或同级特征，禁止向下依赖
+                    FeatureConfig depCfg = configMap.get(dep);
+                    if (depCfg != null) {
+                        validateDependencyDirection(fc, cfg.getAggregation(), dep, depCfg.getAggregation());
                     }
                     inDegree.merge(fc, 1, Integer::sum);
                     dependents.computeIfAbsent(dep, k -> new HashSet<>()).add(fc);
@@ -73,6 +79,39 @@ public class FeatureDependencyResolver {
         }
 
         return result;
+    }
+
+    /**
+     * 校验依赖方向：只允许依赖上级（聚合范围更大）或同级特征。
+     * 聚合层级高 → 低：ORDER > POLICY > APPLICANT > INSURED。
+     * 数值越大表示聚合范围越大（层级越高）。
+     */
+    void validateDependencyDirection(String featureCode, AggregationLevel featureLevel,
+                                     String dependencyCode, AggregationLevel dependencyLevel) {
+        if (featureLevel == null || dependencyLevel == null) {
+            return;
+        }
+        int featureRank = rank(featureLevel);
+        int dependencyRank = rank(dependencyLevel);
+        if (dependencyRank < featureRank) {
+            throw new IllegalStateException(
+                    "特征 " + featureCode + "（" + featureLevel + "级）不允许依赖 "
+                            + dependencyCode + "（" + dependencyLevel + "级），"
+                            + "只能依赖上级或同级特征");
+        }
+    }
+
+    /**
+     * 聚合层级排名：数值越大层级越高（聚合范围越大）。
+     * ORDER(3) > POLICY(2) > APPLICANT(1) > INSURED(0)
+     */
+    private int rank(AggregationLevel level) {
+        return switch (level) {
+            case ORDER -> 3;
+            case POLICY -> 2;
+            case APPLICANT -> 1;
+            case INSURED -> 0;
+        };
     }
 
 }

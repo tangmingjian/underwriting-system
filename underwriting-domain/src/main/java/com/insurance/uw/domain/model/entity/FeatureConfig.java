@@ -127,14 +127,34 @@ public class FeatureConfig {
     }
 
     /**
-     * 获取用于分组的服务标识（从 calc_config 中提取，用于调度器分组）
+     * 获取用于分组的服务标识（从 calc_config 中提取，用于调度器分组）。
+     *
+     * 分组策略按 discovery_type 区分：
+     * - NACOS → service_name（同服务名可合并批处理）
+     * - STATIC → static_endpoints + path（同 endpoint 集合 + 路径可合并）
+     * - DIRECT → path（同路径可合并）
+     * - 其他 calc_type 或无 service 配置 → fallback 到 featureCode（各自独立，不合并）
      */
     public String getServiceKey() {
         CalcConfig cc = getCalcConfig();
-        if (cc != null && cc.getService() != null && cc.getService().getServiceName() != null) {
-            return cc.getService().getServiceName();
+        if (cc == null || cc.getService() == null) {
+            return featureCode;
         }
-        return featureCode; // fallback
+        var svc = cc.getService();
+        String type = svc.getDiscoveryType();
+        if ("NACOS".equalsIgnoreCase(type) && svc.getServiceName() != null) {
+            return svc.getServiceName() + "|" + (svc.getPath() != null ? svc.getPath() : "");
+        }
+        if ("STATIC".equalsIgnoreCase(type)) {
+            String endpoints = svc.getStaticEndpoints() != null
+                    ? String.join(",", svc.getStaticEndpoints()) : "";
+            return endpoints + "|" + (svc.getPath() != null ? svc.getPath() : "");
+        }
+        if ("DIRECT".equalsIgnoreCase(type) || type == null) {
+            return svc.getPath() != null ? svc.getPath() : featureCode;
+        }
+        // fallback：NACOS 但 service_name 为空 / 未知类型
+        return svc.getServiceName() != null ? svc.getServiceName() : featureCode;
     }
 
 }

@@ -10,42 +10,30 @@
         <version>1.0.0-SNAPSHOT</version>
     </parent>
 
-    <artifactId>underwriting-bootstrap</artifactId>
-    <name>Underwriting Bootstrap</name>
-    <description>启动模块：Spring Boot入口</description>
+    <artifactId>underwriting-feature</artifactId>
+    <name>Underwriting Feature</name>
+    <description>特征取数模块：API契约 + 核心实现 + 处理器（后期可独立部署）</description>
 
     <dependencies>
         <dependency>
             <groupId>com.insurance.uw</groupId>
-            <artifactId>underwriting-interfaces</artifactId>
+            <artifactId>underwriting-domain</artifactId>
         </dependency>
         <dependency>
-            <groupId>com.insurance.uw</groupId>
-            <artifactId>underwriting-feature</artifactId>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-context</artifactId>
         </dependency>
         <dependency>
-            <groupId>com.insurance.uw</groupId>
-            <artifactId>underwriting-infrastructure</artifactId>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <optional>true</optional>
         </dependency>
-        <dependency>
-            <groupId>com.mysql</groupId>
-            <artifactId>mysql-connector-j</artifactId>
-            <scope>runtime</scope>
-        </dependency>
+        <!-- test -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
         </dependency>
     </dependencies>
-
-    <build>
-        <plugins>
-            <plugin>
-                <groupId>org.springframework.boot</groupId>
-                <artifactId>spring-boot-maven-plugin</artifactId>
-            </plugin>
-        </plugins>
-    </build>
 
 </project>

@@ -26,7 +26,7 @@ public class PolicyFeatureContext {
     public PolicyFeatureContext(Policy policy, OrderFeatureContext parentOrderCtx) {
         this.policy = policy;
         this.parentOrderCtx = parentOrderCtx;
-        this.applicantCtx = new ApplicantFeatureContext(policy.getApplicant());
+        this.applicantCtx = new ApplicantFeatureContext(policy.getApplicant(), this);
         this.insuredContexts = policy.getInsureds().stream()
                 .map(ins -> new InsuredFeatureContext(ins, this))
                 .collect(Collectors.toList());

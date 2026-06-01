@@ -250,7 +250,7 @@ class ContextHierarchyTest {
         void customerNos() {
             Applicant applicant = new Applicant("A1", "X", 20, "M");
             applicant.setCustomerNos(List.of("CN001", "CN002"));
-            ApplicantFeatureContext ctx = new ApplicantFeatureContext(applicant);
+            ApplicantFeatureContext ctx = new ApplicantFeatureContext(applicant, null);
 
             assertThat(ctx.getCustomerNos()).containsExactly("CN001", "CN002");
         }

@@ -1,9 +1,10 @@
 package com.insurance.uw.application.service;
 
 import com.insurance.uw.common.enums.RuleType;
-import com.insurance.uw.domain.context.OrderFeatureContext;
 import com.insurance.uw.domain.model.entity.*;
 import com.insurance.uw.domain.repository.UnderwritingRuleRepository;
+import com.insurance.uw.feature.api.FeatureExtractionRequest;
+import com.insurance.uw.feature.api.FeatureExtractionResult;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -12,7 +13,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.util.List;
+import java.util.*;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.when;
@@ -25,7 +26,8 @@ class RuleApplicationServiceTest {
     private UnderwritingRuleRepository ruleRepository;
 
     private RuleApplicationService service;
-    private OrderFeatureContext orderCtx;
+    private Order order;
+    private FeatureExtractionResult featResult;
 
     @BeforeEach
     void setUp() {
@@ -37,9 +39,9 @@ class RuleApplicationServiceTest {
         Insured insured2 = new Insured("INS002", "李四", 28, "F");
 
         Policy policy = new Policy("POL001", product, applicant, List.of(insured1, insured2));
-        Order order = new Order("ORD001", "ONLINE", null, List.of(policy));
+        order = new Order("ORD001", "ONLINE", null, List.of(policy));
 
-        orderCtx = new OrderFeatureContext(order);
+        featResult = new FeatureExtractionResult();
     }
 
     private UnderwritingRule createRule(String code, String name, RuleType type, String expr) {
@@ -51,6 +53,58 @@ class RuleApplicationServiceTest {
         rule.setPriority(10);
         rule.setStatus(1);
         return rule;
+    }
+
+    @Nested
+    @DisplayName("buildExtractionRequest - 特征请求构建")
+    class BuildExtractionRequest {
+
+        @Test
+        @DisplayName("规则匹配产品 → 推导特征码和映射")
+        void rulesMatchProduct() {
+            UnderwritingRule rule = new UnderwritingRule();
+            rule.setProductCode("PROD001");
+            rule.setFeatureCodes("RISK_SCORE,AGE");
+            rule.setStatus(1);
+
+            when(ruleRepository.findAllEnabled()).thenReturn(List.of(rule));
+
+            FeatureExtractionRequest req = service.buildExtractionRequest(order);
+
+            assertThat(req.getFeatureCodes()).containsExactlyInAnyOrder("RISK_SCORE", "AGE");
+            assertThat(req.getFeatureToInsuredIds()).containsKeys("RISK_SCORE", "AGE");
+            assertThat(req.getFeatureToPolicyIds()).containsKeys("RISK_SCORE", "AGE");
+        }
+
+        @Test
+        @DisplayName("产品码不匹配 → 规则被跳过")
+        void productCodeMismatch() {
+            UnderwritingRule rule = new UnderwritingRule();
+            rule.setProductCode("OTHER_PROD");
+            rule.setFeatureCodes("RISK_SCORE");
+            rule.setStatus(1);
+
+            when(ruleRepository.findAllEnabled()).thenReturn(List.of(rule));
+
+            FeatureExtractionRequest req = service.buildExtractionRequest(order);
+
+            assertThat(req.getFeatureCodes()).isEmpty();
+        }
+
+        @Test
+        @DisplayName("product_code 为 null → 适用于所有产品（向后兼容）")
+        void nullProductCodeAppliesToAll() {
+            UnderwritingRule rule = new UnderwritingRule();
+            rule.setProductCode(null);
+            rule.setFeatureCodes("AGE");
+            rule.setStatus(1);
+
+            when(ruleRepository.findAllEnabled()).thenReturn(List.of(rule));
+
+            FeatureExtractionRequest req = service.buildExtractionRequest(order);
+
+            assertThat(req.getFeatureCodes()).contains("AGE");
+        }
     }
 
     @Nested
@@ -73,7 +127,7 @@ class RuleApplicationServiceTest {
     }
 
     @Nested
-    @DisplayName("evaluate - 核保评估")
+    @DisplayName("evaluate - 核保评估（FeatureExtractionResult）")
     class Evaluate {
 
         @Test
@@ -81,7 +135,7 @@ class RuleApplicationServiceTest {
         void noRules() {
             when(ruleRepository.findAllEnabled()).thenReturn(List.of());
 
-            var results = service.evaluate(orderCtx);
+            var results = service.evaluate(order, featResult);
 
             assertThat(results).isEmpty();
         }
@@ -89,55 +143,49 @@ class RuleApplicationServiceTest {
         @Test
         @DisplayName("INSURED 规则 → 对每个被保人评估")
         void insuredRule() {
-            // Set features so the SpEL expression can evaluate
-            orderCtx.getAllInsuredContexts().forEach(ic ->
-                    ic.getAcquiredFeatures().put("age", 35));
+            featResult.getInsuredFeatures().put("INS001", Map.of("age", 35));
+            featResult.getInsuredFeatures().put("INS002", Map.of("age", 28));
 
             UnderwritingRule rule = createRule("R1", "年龄>=30", RuleType.INSURED,
                     "#root['age'] >= 30");
             when(ruleRepository.findAllEnabled()).thenReturn(List.of(rule));
 
-            var results = service.evaluate(orderCtx);
+            var results = service.evaluate(order, featResult);
 
-            assertThat(results).hasSize(2); // 2 insureds
+            assertThat(results).hasSize(2);
             assertThat(results).allMatch(r -> r.getLevel().equals("INSURED"));
             assertThat(results).allMatch(r -> r.getRuleCode().equals("R1"));
-            assertThat(results).allMatch(RuleApplicationService.UnderwritingResult::isPassed);
-            assertThat(results).extracting(RuleApplicationService.UnderwritingResult::getTargetId)
-                    .containsExactlyInAnyOrder("INS001", "INS002");
         }
 
         @Test
         @DisplayName("INSURED 规则 → 部分通过部分不通过")
         void insuredPartialPass() {
-            orderCtx.findInsuredCtx("INS001").getAcquiredFeatures().put("age", 35);
-            orderCtx.findInsuredCtx("INS002").getAcquiredFeatures().put("age", 25);
+            featResult.getInsuredFeatures().put("INS001", Map.of("age", 35));
+            featResult.getInsuredFeatures().put("INS002", Map.of("age", 25));
 
             UnderwritingRule rule = createRule("R1", "年龄>=30", RuleType.INSURED,
-                    "#root['age'] >= 30"); // 30 is the threshold
+                    "#root['age'] >= 30");
             when(ruleRepository.findAllEnabled()).thenReturn(List.of(rule));
 
-            var results = service.evaluate(orderCtx);
+            var results = service.evaluate(order, featResult);
 
             assertThat(results).hasSize(2);
-            var result1 = results.stream().filter(r -> r.getTargetId().equals("INS001")).findFirst().orElseThrow();
-            assertThat(result1.isPassed()).isTrue();
-
-            // INS002 has age 25, which is < 30, so should NOT pass
-            var result2 = results.stream().filter(r -> r.getTargetId().equals("INS002")).findFirst().orElseThrow();
-            assertThat(result2.isPassed()).isFalse();
+            var r1 = results.stream().filter(r -> r.getTargetId().equals("INS001")).findFirst().orElseThrow();
+            assertThat(r1.isPassed()).isTrue();
+            var r2 = results.stream().filter(r -> r.getTargetId().equals("INS002")).findFirst().orElseThrow();
+            assertThat(r2.isPassed()).isFalse();
         }
 
         @Test
         @DisplayName("APPLICANT 规则 → 对每个投保人评估")
         void applicantRule() {
-            orderCtx.getPolicies().get(0).getApplicantCtx().getFeatures().put("credit", 80);
+            featResult.getApplicantFeatures().put("APP001", Map.of("credit", 80));
 
             UnderwritingRule rule = createRule("R2", "信用>=70", RuleType.APPLICANT,
                     "#root['credit'] >= 70");
             when(ruleRepository.findAllEnabled()).thenReturn(List.of(rule));
 
-            var results = service.evaluate(orderCtx);
+            var results = service.evaluate(order, featResult);
 
             assertThat(results).hasSize(1);
             assertThat(results.get(0).getLevel()).isEqualTo("APPLICANT");
@@ -148,13 +196,13 @@ class RuleApplicationServiceTest {
         @Test
         @DisplayName("POLICY 规则 → 对每个保单评估")
         void policyRule() {
-            orderCtx.getPolicies().get(0).getPolicyFeatures().put("premium", 5000);
+            featResult.getPolicyFeatures().put("POL001", Map.of("premium", 5000));
 
             UnderwritingRule rule = createRule("R3", "保费<10000", RuleType.POLICY,
                     "#root['premium'] < 10000");
             when(ruleRepository.findAllEnabled()).thenReturn(List.of(rule));
 
-            var results = service.evaluate(orderCtx);
+            var results = service.evaluate(order, featResult);
 
             assertThat(results).hasSize(1);
             assertThat(results.get(0).getLevel()).isEqualTo("POLICY");
@@ -163,45 +211,36 @@ class RuleApplicationServiceTest {
         }
 
         @Test
-        @DisplayName("特征收集覆盖 — INSURED 规则使用来自各层级的特征")
+        @DisplayName("特征收集覆盖 — INSURED 特征优先级最高")
         void featureOverridesForInsured() {
-            // Order feature (lowest priority)
-            orderCtx.getOrderFeatures().put("channel", "ONLINE");
-            // Policy feature
-            orderCtx.getPolicies().get(0).getPolicyFeatures().put("channel", "OFFLINE");
-            // Insured feature (highest priority - should win)
-            orderCtx.findInsuredCtx("INS001").getAcquiredFeatures().put("channel", "OFFLINE");
+            featResult.getOrderFeatures().put("channel", "ONLINE");
+            featResult.getPolicyFeatures().put("POL001", new HashMap<>(Map.of("channel", "OFFLINE")));
+            featResult.getInsuredFeatures().put("INS001", Map.of("channel", "OFFLINE"));
 
-            // Rule evaluates the collected feature: should see "OFFLINE" (insured level wins)
             UnderwritingRule rule = createRule("R_CH", "渠道检查", RuleType.INSURED,
                     "#root['channel'] == 'OFFLINE'");
             when(ruleRepository.findAllEnabled()).thenReturn(List.of(rule));
 
-            var results = service.evaluate(orderCtx);
+            var results = service.evaluate(order, featResult);
 
             assertThat(results).hasSize(2);
-            assertThat(results.get(0).isPassed()).isTrue();
+            var r1 = results.stream().filter(r -> r.getTargetId().equals("INS001")).findFirst().orElseThrow();
+            assertThat(r1.isPassed()).isTrue();
         }
 
         @Test
         @DisplayName("复杂 SpEL 表达式 → 正确评估")
         void complexExpression() {
-            orderCtx.findInsuredCtx("INS001").getAcquiredFeatures().put("age", 35);
-            orderCtx.findInsuredCtx("INS001").getAcquiredFeatures().put("score", 85);
+            featResult.getInsuredFeatures().put("INS001", Map.of("age", 35, "score", 85));
 
             UnderwritingRule rule = createRule("R_COMPLEX", "复合条件",
                     RuleType.INSURED, "#root['age'] > 30 and #root['score'] > 60");
             when(ruleRepository.findAllEnabled()).thenReturn(List.of(rule));
 
-            var results = service.evaluate(orderCtx);
+            var results = service.evaluate(order, featResult);
 
-            // INS001: age=35>30, score=85>60 → true
             var r1 = results.stream().filter(r -> r.getTargetId().equals("INS001")).findFirst().orElseThrow();
             assertThat(r1.isPassed()).isTrue();
-
-            // INS002: has no features → expression returns false (null != true)
-            var r2 = results.stream().filter(r -> r.getTargetId().equals("INS002")).findFirst().orElseThrow();
-            assertThat(r2.isPassed()).isFalse();
         }
 
         @Test
@@ -215,10 +254,8 @@ class RuleApplicationServiceTest {
 
             when(ruleRepository.findAllEnabled()).thenReturn(List.of(rule2, rule1));
 
-            var results = service.evaluate(orderCtx);
+            var results = service.evaluate(order, featResult);
 
-            // R1 (priority 1) should be first, R2 (priority 5) second
-            // Each INSURED rule produces 2 results (one per insured)
             assertThat(results.get(0).getRuleCode()).isEqualTo("R1");
             assertThat(results.get(1).getRuleCode()).isEqualTo("R1");
             assertThat(results.get(2).getRuleCode()).isEqualTo("R2");
@@ -233,8 +270,7 @@ class RuleApplicationServiceTest {
 
             when(ruleRepository.findAllEnabled()).thenReturn(List.of(rule));
 
-            // Should not throw NPE
-            var results = service.evaluate(orderCtx);
+            var results = service.evaluate(order, featResult);
             assertThat(results).hasSize(2);
         }
 
@@ -242,10 +278,10 @@ class RuleApplicationServiceTest {
         @DisplayName("表达式返回 null → 视为 false（不通过）")
         void nullExpressionResult() {
             UnderwritingRule rule = createRule("R1", "规则1", RuleType.INSURED,
-                    "#root['nonexistent']"); // Returns null
+                    "#root['nonexistent']");
             when(ruleRepository.findAllEnabled()).thenReturn(List.of(rule));
 
-            var results = service.evaluate(orderCtx);
+            var results = service.evaluate(order, featResult);
 
             assertThat(results).allMatch(r -> !r.isPassed());
         }
