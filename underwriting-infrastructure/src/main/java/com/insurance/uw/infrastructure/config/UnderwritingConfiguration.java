@@ -1,5 +1,7 @@
 package com.insurance.uw.infrastructure.config;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.insurance.uw.infrastructure.cache.CacheOps;
 import com.insurance.uw.infrastructure.client.DownstreamApiClientImpl;
 import com.insurance.uw.infrastructure.client.MockDownstreamApiClient;
 import com.insurance.uw.infrastructure.client.discovery.DirectServiceDiscoveryStrategy;
@@ -14,13 +16,16 @@ import com.insurance.uw.domain.service.DownstreamApiClient;
 import com.insurance.uw.domain.service.GroovyMappingEngine;
 import com.insurance.uw.infrastructure.groovy.GroovyMappingEngineImpl;
 import com.insurance.uw.infrastructure.persistence.*;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.web.client.RestTemplate;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
@@ -117,21 +122,61 @@ public class UnderwritingConfiguration {
         );
     }
 
+    // ==================== 缓存 ====================
+
+    @Bean
+    public CacheOps cacheOps(StringRedisTemplate stringRedisTemplate,
+                              @Qualifier("cacheObjectMapper") ObjectMapper objectMapper) {
+        return new CacheOps(stringRedisTemplate, objectMapper);
+    }
+
+    /**
+     * 缓存专用 ObjectMapper（可独立配置，避免与全局 ObjectMapper 互相影响）
+     */
+    @Bean("cacheObjectMapper")
+    public ObjectMapper cacheObjectMapper() {
+        return new ObjectMapper();
+    }
+
+    @Bean
+    public Duration featureConfigTtl(
+            @Value("${underwriting.cache.feature-config-ttl:600}") int seconds) {
+        return Duration.ofSeconds(seconds);
+    }
+
+    @Bean
+    public Duration ruleTtl(
+            @Value("${underwriting.cache.rule-ttl:300}") int seconds) {
+        return Duration.ofSeconds(seconds);
+    }
+
+    @Bean
+    public Duration scriptTtl(
+            @Value("${underwriting.cache.script-ttl:1800}") int seconds) {
+        return Duration.ofSeconds(seconds);
+    }
+
     // ==================== 仓储 Bean ====================
 
     @Bean
-    public FeatureConfigRepository featureConfigRepository(FeatureConfigMapper mapper) {
-        return new FeatureConfigRepositoryImpl(mapper);
+    public FeatureConfigRepository featureConfigRepository(FeatureConfigMapper mapper,
+                                                            CacheOps cacheOps,
+                                                            @Qualifier("featureConfigTtl") Duration fcTtl) {
+        return new FeatureConfigRepositoryImpl(mapper, cacheOps, fcTtl);
     }
 
     @Bean
-    public UnderwritingRuleRepository underwritingRuleRepository(UnderwritingRuleMapper mapper) {
-        return new UnderwritingRuleRepositoryImpl(mapper);
+    public UnderwritingRuleRepository underwritingRuleRepository(UnderwritingRuleMapper mapper,
+                                                                  CacheOps cacheOps,
+                                                                  @Qualifier("ruleTtl") Duration ruleTtl) {
+        return new UnderwritingRuleRepositoryImpl(mapper, cacheOps, ruleTtl);
     }
 
     @Bean
-    public FeatureScriptRepository featureScriptRepository(FeatureScriptMapper mapper) {
-        return new FeatureScriptRepositoryImpl(mapper);
+    public FeatureScriptRepository featureScriptRepository(FeatureScriptMapper mapper,
+                                                            CacheOps cacheOps,
+                                                            @Qualifier("scriptTtl") Duration scriptTtl) {
+        return new FeatureScriptRepositoryImpl(mapper, cacheOps, scriptTtl);
     }
 
 }

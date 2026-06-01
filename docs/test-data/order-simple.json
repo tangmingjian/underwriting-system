@@ -1,0 +1,25 @@
+{
+  "id": "ORD_SIMPLE_001",
+  "channel": "OFFLINE",
+  "orderTime": "2026-06-01T09:00:00",
+  "policies": [
+    {
+      "id": "POL_S01",
+      "product": { "productCode": "HEALTH_A_001", "productName": "健康险A款" },
+      "applicant": {
+        "id": "APP_S01", "idNo": "110101199001011234", "name": "测试投保人",
+        "age": 30, "gender": "M",
+        "customerNos": ["CUST_X_001"]
+      },
+      "insureds": [
+        {
+          "id": "INS_S01", "idNo": "110101199001011234", "name": "测试投保人",
+          "age": 30, "gender": "M", "occupation": "测试职业", "phone": "13800000000",
+          "customerNos": ["CUST_X_001"]
+        }
+      ],
+      "declaredIncome": 100000,
+      "appliedAmount": 300000
+    }
+  ]
+}

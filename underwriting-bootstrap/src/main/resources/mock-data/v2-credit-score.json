@@ -1,0 +1,17 @@
+{
+  "code": 0,
+  "message": "success",
+  "data": {
+    "scores": [
+      { "customerNo": "CUST_A_001", "score": 720, "level": "A", "scoreTime": "2026-05-15T10:00:00" },
+      { "customerNo": "CUST_A_002", "score": 680, "level": "B", "scoreTime": "2026-05-15T10:00:00" },
+      { "customerNo": "CUST_A_003", "score": 750, "level": "A", "scoreTime": "2026-05-20T10:00:00" },
+      { "customerNo": "CUST_B_001", "score": 650, "level": "B", "scoreTime": "2026-05-15T10:00:00" },
+      { "customerNo": "CUST_B_002", "score": 610, "level": "C", "scoreTime": "2026-05-15T10:00:00" },
+      { "customerNo": "CUST_C_001", "score": 580, "level": "C", "scoreTime": "2026-05-15T10:00:00" },
+      { "customerNo": "CUST_D_001", "score": 700, "level": "B", "scoreTime": "2026-05-15T10:00:00" },
+      { "customerNo": "CUST_D_002", "score": 690, "level": "B", "scoreTime": "2026-05-15T10:00:00" }
+    ],
+    "orderRiskLevel": "LOW"
+  }
+}

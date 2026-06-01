@@ -1,0 +1,1 @@
+{"code":0,"data":{"risks":[{"refId":"INS_001","riskScore":85,"fraudScore":10,"amlFlag":false},{"refId":"INS_002","riskScore":72,"fraudScore":25,"amlFlag":false},{"refId":"INS_003","riskScore":45,"fraudScore":90,"amlFlag":true},{"refId":"INS_004","riskScore":68,"fraudScore":15,"amlFlag":false}]}}

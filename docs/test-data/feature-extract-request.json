@@ -1,0 +1,62 @@
+{
+  "order": {
+    "id": "ORD_20260601_001",
+    "channel": "ONLINE",
+    "orderTime": "2026-06-01T10:30:00",
+    "policies": [
+      {
+        "id": "POL_001",
+        "product": { "productCode": "HEALTH_A_001", "productName": "健康险A款" },
+        "applicant": {
+          "id": "APP_001", "idNo": "110101199003151234", "name": "张建国",
+          "age": 36, "gender": "M",
+          "customerNos": ["CUST_A_001", "CUST_A_002", "CUST_A_003"]
+        },
+        "insureds": [
+          {
+            "id": "INS_001", "idNo": "110101199003151234", "name": "张建国",
+            "age": 36, "gender": "M", "occupation": "软件工程师", "phone": "13800001111",
+            "customerNos": ["CUST_A_001", "CUST_A_002", "CUST_A_003"]
+          },
+          {
+            "id": "INS_002", "idNo": "110101199506152345", "name": "李美玲",
+            "age": 31, "gender": "F", "occupation": "医生", "phone": "13800002222",
+            "customerNos": ["CUST_B_001", "CUST_B_002"]
+          }
+        ],
+        "declaredIncome": 300000, "appliedAmount": 1000000
+      },
+      {
+        "id": "POL_002",
+        "product": { "productCode": "ACCIDENT_B_002", "productName": "意外险B款" },
+        "applicant": {
+          "id": "APP_002", "idNo": "110101198812016789", "name": "王大明",
+          "age": 38, "gender": "M",
+          "customerNos": ["CUST_C_001"]
+        },
+        "insureds": [
+          {
+            "id": "INS_003", "idNo": "110101198812016789", "name": "王大明",
+            "age": 38, "gender": "M", "occupation": "建筑工人", "phone": "13800003333",
+            "customerNos": ["CUST_C_001"]
+          },
+          {
+            "id": "INS_004", "idNo": "110101199210019876", "name": "赵小红",
+            "age": 34, "gender": "F", "occupation": "会计", "phone": "13800004444",
+            "customerNos": ["CUST_D_001", "CUST_D_002"]
+          }
+        ],
+        "declaredIncome": 150000, "appliedAmount": 200000
+      }
+    ]
+  },
+  "featureCodes": ["RISK_SCORE", "FRAUD_CHECK"],
+  "featureToInsuredIds": {
+    "RISK_SCORE": ["INS_001", "INS_002", "INS_003", "INS_004"],
+    "FRAUD_CHECK": ["INS_001", "INS_002", "INS_003", "INS_004"]
+  },
+  "featureToPolicyIds": {
+    "RISK_SCORE": ["POL_001", "POL_002"],
+    "FRAUD_CHECK": ["POL_001", "POL_002"]
+  }
+}
