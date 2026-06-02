@@ -20,17 +20,17 @@ public class OrderFeatureContext {
 
     /**
      * 由调度器在执行前注入（非持久化，仅当前次核保有效）
-     * featureCode → 相关被保人 ID 集合
+     * 保单 → 被保人 → 需要的特征码集合（按保单隔离）
      */
     @JsonIgnore
-    private Map<String, Set<String>> featureToInsuredIds;
+    private Map<String, Map<String, Set<String>>> policyInsuredFeatureMap;
 
     /**
      * 由调度器在执行前注入（非持久化，仅当前次核保有效）
-     * featureCode → 相关保单 ID 集合
+     * 保单 → 投保人 → 需要的特征码集合（按保单隔离）
      */
     @JsonIgnore
-    private Map<String, Set<String>> featureToPolicyIds;
+    private Map<String, Map<String, Set<String>>> policyApplicantFeatureMap;
 
     public OrderFeatureContext(Order order) {
         this.order = order;
@@ -55,12 +55,12 @@ public class OrderFeatureContext {
 
     // ---- 特征→被保人/保单映射（由调度器注入） ----
 
-    public void setFeatureInsuredMapping(Map<String, Set<String>> insuredMapping) {
-        this.featureToInsuredIds = insuredMapping;
+    public void setPolicyInsuredFeatureMap(Map<String, Map<String, Set<String>>> policyInsuredFeatureMap) {
+        this.policyInsuredFeatureMap = policyInsuredFeatureMap;
     }
 
-    public void setFeaturePolicyMapping(Map<String, Set<String>> policyMapping) {
-        this.featureToPolicyIds = policyMapping;
+    public void setPolicyApplicantFeatureMap(Map<String, Map<String, Set<String>>> policyApplicantFeatureMap) {
+        this.policyApplicantFeatureMap = policyApplicantFeatureMap;
     }
 
     // ---- 便捷查找 ----
@@ -95,30 +95,62 @@ public class OrderFeatureContext {
 
     /**
      * 按特征码返回相关被保人上下文（含 customerNos）。
-     * 若 mapping 未注入或该特征无映射 → 回退到 getAllInsuredContexts()。
+     * 从 policyInsuredFeatureMap 推导：扫描所有保单+被保人，过滤出包含该特征码的被保人。
+     * 若 mapping 未注入或无匹配 → 回退到 getAllInsuredContexts()。
      */
     public List<InsuredFeatureContext> getInsuredsForFeature(String featureCode) {
-        Set<String> insuredIds = (featureToInsuredIds != null) ? featureToInsuredIds.get(featureCode) : null;
-        if (insuredIds == null || insuredIds.isEmpty()) {
+        if (policyInsuredFeatureMap == null) {
+            return getAllInsuredContexts();
+        }
+        Set<String> matchingIds = new HashSet<>();
+        for (Map<String, Set<String>> byInsured : policyInsuredFeatureMap.values()) {
+            for (Map.Entry<String, Set<String>> e : byInsured.entrySet()) {
+                if (e.getValue().contains(featureCode)) {
+                    matchingIds.add(e.getKey());
+                }
+            }
+        }
+        if (matchingIds.isEmpty()) {
             return getAllInsuredContexts();
         }
         return policyContexts.stream()
                 .flatMap(pc -> pc.getInsureds().stream())
-                .filter(ic -> insuredIds.contains(ic.getInsuredId()))
+                .filter(ic -> matchingIds.contains(ic.getInsuredId()))
                 .collect(Collectors.toList());
     }
 
     /**
      * 按特征码返回相关保单上下文（用于收集对应投保人）。
-     * 若 mapping 未注入或该特征无映射 → 回退到 getPolicies()。
+     * 从 policyInsuredFeatureMap + policyApplicantFeatureMap 推导：过滤出包含该特征码的保单。
+     * 若 mapping 未注入或无匹配 → 回退到 getPolicies()。
      */
     public List<PolicyFeatureContext> getPoliciesForFeature(String featureCode) {
-        Set<String> policyIds = (featureToPolicyIds != null) ? featureToPolicyIds.get(featureCode) : null;
-        if (policyIds == null || policyIds.isEmpty()) {
+        Set<String> matchingPolicyIds = new HashSet<>();
+        if (policyInsuredFeatureMap != null) {
+            for (Map.Entry<String, Map<String, Set<String>>> entry : policyInsuredFeatureMap.entrySet()) {
+                for (Set<String> fcs : entry.getValue().values()) {
+                    if (fcs.contains(featureCode)) {
+                        matchingPolicyIds.add(entry.getKey());
+                        break;
+                    }
+                }
+            }
+        }
+        if (policyApplicantFeatureMap != null) {
+            for (Map.Entry<String, Map<String, Set<String>>> entry : policyApplicantFeatureMap.entrySet()) {
+                for (Set<String> fcs : entry.getValue().values()) {
+                    if (fcs.contains(featureCode)) {
+                        matchingPolicyIds.add(entry.getKey());
+                        break;
+                    }
+                }
+            }
+        }
+        if (matchingPolicyIds.isEmpty()) {
             return getPolicies();
         }
         return policyContexts.stream()
-                .filter(pc -> policyIds.contains(pc.getPolicyId()))
+                .filter(pc -> matchingPolicyIds.contains(pc.getPolicyId()))
                 .collect(Collectors.toList());
     }
 

@@ -106,7 +106,8 @@ class ContextHierarchyTest {
         @Test
         @DisplayName("getInsuredsForFeature → 有 mapping 时按映射过滤")
         void getInsuredsForFeatureWithMapping() {
-            orderCtx.setFeatureInsuredMapping(Map.of("f1", Set.of("INS001", "INS002")));
+            orderCtx.setPolicyInsuredFeatureMap(
+                    Map.of("POL001", Map.of("INS001", Set.of("f1"), "INS002", Set.of("f1"))));
             List<InsuredFeatureContext> result = orderCtx.getInsuredsForFeature("f1");
 
             assertThat(result).hasSize(2);
@@ -125,7 +126,8 @@ class ContextHierarchyTest {
         @Test
         @DisplayName("getInsuredsForFeature → mapping 中无该特征时回退到全部")
         void getInsuredsForFeatureFallbackOnMissingFeature() {
-            orderCtx.setFeatureInsuredMapping(Map.of("f1", Set.of("INS001")));
+            orderCtx.setPolicyInsuredFeatureMap(
+                    Map.of("POL001", Map.of("INS001", Set.of("f1"))));
             List<InsuredFeatureContext> result = orderCtx.getInsuredsForFeature("f2");
 
             assertThat(result).hasSize(3);
@@ -134,7 +136,8 @@ class ContextHierarchyTest {
         @Test
         @DisplayName("getInsuredsForFeature → mapping 值为空集合时回退到全部")
         void getInsuredsForFeatureFallbackOnEmptySet() {
-            orderCtx.setFeatureInsuredMapping(Map.of("f1", Set.of()));
+            orderCtx.setPolicyInsuredFeatureMap(
+                    Map.of("POL001", Map.of("INS001", Set.of())));
             List<InsuredFeatureContext> result = orderCtx.getInsuredsForFeature("f1");
 
             assertThat(result).hasSize(3);
@@ -143,7 +146,8 @@ class ContextHierarchyTest {
         @Test
         @DisplayName("getPoliciesForFeature → 有 mapping 时按映射过滤")
         void getPoliciesForFeatureWithMapping() {
-            orderCtx.setFeaturePolicyMapping(Map.of("f1", Set.of("POL001")));
+            orderCtx.setPolicyInsuredFeatureMap(
+                    Map.of("POL001", Map.of("INS001", Set.of("f1"))));
             List<PolicyFeatureContext> result = orderCtx.getPoliciesForFeature("f1");
 
             assertThat(result).hasSize(1);

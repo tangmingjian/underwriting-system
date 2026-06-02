@@ -7,6 +7,7 @@ import com.insurance.uw.common.enums.StorageLevel;
 import com.insurance.uw.domain.model.entity.*;
 import com.insurance.uw.domain.model.valueobject.CalcConfig;
 import com.insurance.uw.domain.repository.FeatureConfigRepository;
+import com.insurance.uw.domain.service.FeatureResultCache;
 import com.insurance.uw.feature.api.FeatureExtractionRequest;
 import com.insurance.uw.feature.api.FeatureExtractionResult;
 import com.insurance.uw.feature.core.handler.FeatureCalcHandler;
@@ -38,6 +39,9 @@ class UnderwritingApplicationServiceTest {
     @Mock
     private FeatureCalcHandler mockHandler;
 
+    @Mock
+    private FeatureResultCache featureResultCache;
+
     private ExecutorService executor;
 
     private FeatureExtractionServiceImpl service;
@@ -48,7 +52,8 @@ class UnderwritingApplicationServiceTest {
         when(mockHandler.getSupportedType()).thenReturn(CalcType.PARAM_MAPPING);
         service = new FeatureExtractionServiceImpl(
                 featureConfigRepository, executor,
-                List.of(mockHandler));
+                List.of(mockHandler),
+                featureResultCache);
     }
 
     private Order createTestOrder() {
@@ -77,7 +82,23 @@ class UnderwritingApplicationServiceTest {
     private FeatureExtractionRequest buildRequest(Order order, Set<String> featureCodes) {
         FeatureExtractionRequest req = new FeatureExtractionRequest();
         req.setOrder(order);
-        req.setFeatureCodes(featureCodes);
+        if (featureCodes != null && !featureCodes.isEmpty()) {
+            Map<String, Map<String, Set<String>>> insuredMap = new HashMap<>();
+            Map<String, Map<String, Set<String>>> applicantMap = new HashMap<>();
+            for (Policy policy : order.getPolicies()) {
+                Map<String, Set<String>> insuredInner = new HashMap<>();
+                for (Insured insured : policy.getInsureds()) {
+                    insuredInner.put(insured.getId(), featureCodes);
+                }
+                insuredMap.put(policy.getId(), insuredInner);
+                if (policy.getApplicant() != null) {
+                    applicantMap.put(policy.getId(),
+                            Map.of(policy.getApplicant().getId(), featureCodes));
+                }
+            }
+            req.setPolicyInsuredFeatureMap(insuredMap);
+            req.setPolicyApplicantFeatureMap(applicantMap);
+        }
         return req;
     }
 
@@ -125,8 +146,9 @@ class UnderwritingApplicationServiceTest {
             FeatureExtractionResult result = service.extract(req);
 
             assertThat(result).isNotNull();
-            assertThat(result.getInsuredFeatures()).containsKey("INS001");
-            assertThat(result.getInsuredFeatures().get("INS001")).containsEntry("AGE", 35);
+            assertThat(result.getInsuredFeatures()).containsKey("POL001");
+            assertThat(result.getInsuredFeatures().get("POL001")).containsKey("INS001");
+            assertThat(result.getInsuredFeatures().get("POL001").get("INS001")).containsEntry("AGE", 35);
             verify(mockHandler).execute(any(), eq(fc));
         }
 
@@ -230,7 +252,7 @@ class UnderwritingApplicationServiceTest {
     }
 
     @Nested
-    @DisplayName("featureToInsuredIds / featureToPolicyIds 映射注入")
+    @DisplayName("policyInsuredFeatureMap / policyApplicantFeatureMap 映射注入")
     class MappingInjection {
 
         @Test
@@ -246,12 +268,12 @@ class UnderwritingApplicationServiceTest {
 
             FeatureExtractionRequest req = new FeatureExtractionRequest();
             req.setOrder(order);
-            req.setFeatureCodes(Set.of("AGE"));
-            req.setFeatureToInsuredIds(Map.of("AGE", Set.of("INS001")));
+            req.setPolicyInsuredFeatureMap(Map.of("POL001", Map.of("INS001", Set.of("AGE"))));
 
             FeatureExtractionResult result = service.extract(req);
 
-            assertThat(result.getInsuredFeatures()).containsKey("INS001");
+            assertThat(result.getInsuredFeatures()).containsKey("POL001");
+            assertThat(result.getInsuredFeatures().get("POL001")).containsKey("INS001");
         }
     }
 
@@ -318,7 +340,8 @@ class UnderwritingApplicationServiceTest {
             FeatureExtractionResult result = service.extract(
                     req(order, StorageLevel.INSURED, AggregationLevel.ORDER));
 
-            assertThat(result.getInsuredFeatures()).containsKey("INS001");
+            assertThat(result.getInsuredFeatures()).containsKey("POL001");
+            assertThat(result.getInsuredFeatures().get("POL001")).containsKey("INS001");
         }
 
         @Test
@@ -346,7 +369,8 @@ class UnderwritingApplicationServiceTest {
 
             FeatureExtractionResult result = service.extract(buildRequest(order, Set.of("FC")));
 
-            assertThat(result.getApplicantFeatures()).containsKey("APP001");
+            assertThat(result.getApplicantFeatures()).containsKey("POL001");
+            assertThat(result.getApplicantFeatures().get("POL001")).containsKey("APP001");
         }
 
         @Test

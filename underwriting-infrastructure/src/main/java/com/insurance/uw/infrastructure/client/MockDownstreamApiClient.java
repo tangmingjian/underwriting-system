@@ -49,7 +49,7 @@ public class MockDownstreamApiClient implements DownstreamApiClient {
         if (request == null) {
             return Collections.emptyMap();
         }
-
+        log.info("mock request: {}",request);
         String path = extractPath(rawPath);
 
         // 1) 优先尝试加载 fixture 文件

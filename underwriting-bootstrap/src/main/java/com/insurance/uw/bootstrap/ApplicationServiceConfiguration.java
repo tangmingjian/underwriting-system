@@ -14,6 +14,7 @@ import com.insurance.uw.domain.repository.FeatureConfigRepository;
 import com.insurance.uw.domain.repository.FeatureScriptRepository;
 import com.insurance.uw.domain.repository.UnderwritingRuleRepository;
 import com.insurance.uw.domain.service.DownstreamApiClient;
+import com.insurance.uw.domain.service.FeatureResultCache;
 import com.insurance.uw.domain.service.GroovyMappingEngine;
 
 import java.util.List;
@@ -32,8 +33,9 @@ public class ApplicationServiceConfiguration {
     public FeatureExtractionService featureExtractionService(
             FeatureConfigRepository featureConfigRepository,
             ExecutorService featureExecutor,
-            List<FeatureCalcHandler> handlers) {
-        return new FeatureExtractionServiceImpl(featureConfigRepository, featureExecutor, handlers);
+            List<FeatureCalcHandler> handlers,
+            FeatureResultCache featureResultCache) {
+        return new FeatureExtractionServiceImpl(featureConfigRepository, featureExecutor, handlers, featureResultCache);
     }
 
     @Bean

@@ -2,6 +2,7 @@ package com.insurance.uw.feature.api;
 
 import com.insurance.uw.domain.model.entity.Order;
 
+import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
 
@@ -13,14 +14,11 @@ public class FeatureExtractionRequest {
     /** 订单（已可序列化） */
     private Order order;
 
-    /** 需要计算的特征码 */
-    private Set<String> featureCodes;
+    /** 保单 → 被保人 → 需要的特征码集合（按保单隔离） */
+    private Map<String, Map<String, Set<String>>> policyInsuredFeatureMap;
 
-    /** 特征 → 被保人（按需限定范围） */
-    private Map<String, Set<String>> featureToInsuredIds;
-
-    /** 特征 → 保单（按需限定范围） */
-    private Map<String, Set<String>> featureToPolicyIds;
+    /** 保单 → 投保人 → 需要的特征码集合（按保单隔离） */
+    private Map<String, Map<String, Set<String>>> policyApplicantFeatureMap;
 
     /** 被保人 → 同人客户号（for 同人查询） */
     private Map<String, Set<String>> customerNos;
@@ -30,17 +28,31 @@ public class FeatureExtractionRequest {
     public Order getOrder() { return order; }
     public void setOrder(Order order) { this.order = order; }
 
-    public Set<String> getFeatureCodes() { return featureCodes; }
-    public void setFeatureCodes(Set<String> featureCodes) { this.featureCodes = featureCodes; }
-
-    public Map<String, Set<String>> getFeatureToInsuredIds() { return featureToInsuredIds; }
-    public void setFeatureToInsuredIds(Map<String, Set<String>> featureToInsuredIds) {
-        this.featureToInsuredIds = featureToInsuredIds;
+    public Set<String> getFeatureCodes() {
+        Set<String> all = new LinkedHashSet<>();
+        if (policyInsuredFeatureMap != null) {
+            policyInsuredFeatureMap.values().forEach(m ->
+                    m.values().forEach(all::addAll));
+        }
+        if (policyApplicantFeatureMap != null) {
+            policyApplicantFeatureMap.values().forEach(m ->
+                    m.values().forEach(all::addAll));
+        }
+        return all;
     }
 
-    public Map<String, Set<String>> getFeatureToPolicyIds() { return featureToPolicyIds; }
-    public void setFeatureToPolicyIds(Map<String, Set<String>> featureToPolicyIds) {
-        this.featureToPolicyIds = featureToPolicyIds;
+    public Map<String, Map<String, Set<String>>> getPolicyInsuredFeatureMap() {
+        return policyInsuredFeatureMap;
+    }
+    public void setPolicyInsuredFeatureMap(Map<String, Map<String, Set<String>>> policyInsuredFeatureMap) {
+        this.policyInsuredFeatureMap = policyInsuredFeatureMap;
+    }
+
+    public Map<String, Map<String, Set<String>>> getPolicyApplicantFeatureMap() {
+        return policyApplicantFeatureMap;
+    }
+    public void setPolicyApplicantFeatureMap(Map<String, Map<String, Set<String>>> policyApplicantFeatureMap) {
+        this.policyApplicantFeatureMap = policyApplicantFeatureMap;
     }
 
     public Map<String, Set<String>> getCustomerNos() { return customerNos; }

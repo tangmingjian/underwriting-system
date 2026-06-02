@@ -11,9 +11,21 @@ spring:
     password: root
   sql:
     init:
-      mode: never
+      mode: always
       schema-locations: classpath:schema.sql
-
+      data-locations: classpath:init_data.sql
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      password:
+      timeout: 3000ms
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 8
+          min-idle: 2
+          max-wait: 1000ms
   profiles:
     active: mock
 
@@ -35,20 +47,6 @@ logging:
   level:
     com.insurance.uw: debug
 
-# ==================== Redis 缓存 ====================
-spring:
-  data:
-    redis:
-      host: localhost
-      port: 6379
-      password:
-      timeout: 3000ms
-      lettuce:
-        pool:
-          max-active: 8
-          max-idle: 8
-          min-idle: 2
-          max-wait: 1000ms
 
 # ==================== 缓存 TTL 配置 ====================
 underwriting:
@@ -56,17 +54,15 @@ underwriting:
     feature-config-ttl: 600    # 特征配置缓存 10 分钟
     rule-ttl: 300              # 规则缓存 5 分钟
     script-ttl: 1800           # 脚本缓存 30 分钟
-
-# ==================== Nacos 服务发现 ====================
-nacos:
-  server-addr: 127.0.0.1:8848   # Nacos 服务地址；未部署 Nacos 时 DIRECT 模式不受影响
-
-# ==================== 特征取数线程池 ====================
-underwriting:
   executor:
     core-pool-size: 8
     max-pool-size: 16
     queue-capacity: 200
     keep-alive-seconds: 60
     thread-name-prefix: uw-feature-
+
+# ==================== Nacos 服务发现 ====================
+nacos:
+  server-addr: 127.0.0.1:8848   # Nacos 服务地址；未部署 Nacos 时 DIRECT 模式不受影响
+
 

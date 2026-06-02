@@ -10,7 +10,7 @@
 -- 合并：下游按 customerNo 返回 → 匹配回被保人/投保人
 -- ============================================================
 
-INSERT INTO t_feature_script (script_id, script_name, script_type, script_text, version, status, description) VALUES
+INSERT IGNORE INTO t_feature_script (script_id, script_name, script_type, script_text, version, status, description) VALUES
 ('buildCreditScoreReq', '信用评分-入参映射', 'INPUT',
 'Map buildRequest(OrderFeatureContext ctx) {
     List<Map> persons = []
@@ -99,14 +99,14 @@ INSERT INTO t_feature_script (script_id, script_name, script_type, script_text, 
     return result
 }', 1, 'ACTIVE', '同人客户号模式：按 customerNo 反查被保人/投保人，合并多客户号结果（取最高分）');
 
-INSERT INTO t_feature_config (
+INSERT IGNORE INTO t_feature_config (
     feature_code, feature_name, category, data_type, calc_type,
     calc_config, aggregation, storage_level,
     version, ttl_seconds, source_system, owner, status
 ) VALUES (
     'ins.creditScore', '信用评分', 'ATOMIC', 'INT', 'EXTERNAL_API',
     '{"service":{"discovery_type":"STATIC","static_endpoints":["https://api.credit-center.gov.cn","https://api2.credit-center.gov.cn"],"protocol":"HTTPS","path":"/v2/credit/score","method":"POST","timeout_ms":5000,"headers":{"X-Api-Key":"${env.CREDIT_API_KEY}","X-Channel-Code":"INSURANCE_UW"}},"input_script_id":"buildCreditScoreReq","output_script_id":"extractCreditScore"}',
-    'ORDER', 'INSURED', 1, 300, 'credit-center', 'zhangsan', 'DRAFT'
+    'ORDER', 'INSURED', 1, 300, 'credit-center', 'zhangsan', 'ACTIVE'
 );
 
 -- ============================================================
@@ -114,7 +114,7 @@ INSERT INTO t_feature_config (
 -- 查询：订单下所有人 + 全部客户号
 -- ============================================================
 
-INSERT INTO t_feature_script (script_id, script_name, script_type, script_text, version, status, description) VALUES
+INSERT IGNORE INTO t_feature_script (script_id, script_name, script_type, script_text, version, status, description) VALUES
 ('buildFraudRiskReq', '反欺诈-入参映射', 'INPUT',
 'Map buildRequest(OrderFeatureContext ctx) {
     List<Map> persons = []
@@ -162,14 +162,14 @@ INSERT INTO t_feature_script (script_id, script_name, script_type, script_text, 
     return ["__ORDER__": orderFeatures]
 }', 1, 'ACTIVE', '反欺诈结果直接写入订单级特征');
 
-INSERT INTO t_feature_config (
+INSERT IGNORE INTO t_feature_config (
     feature_code, feature_name, category, data_type, calc_type,
     calc_config, aggregation, storage_level,
     version, ttl_seconds, source_system, owner, status
 ) VALUES (
     'ord.fraudRiskScore', '反欺诈风险评分', 'ATOMIC', 'INT', 'EXTERNAL_API',
     '{"service":{"discovery_type":"NACOS","service_name":"risk-control-svc","namespace":"production","group":"DEFAULT_GROUP","protocol":"HTTP","path":"/api/v1/fraud/score","method":"POST","timeout_ms":2000,"headers":{"X-Source-System":"UNDERWRITING_ENGINE","X-Request-Id":"${ctx.traceId}"}},"input_script_id":"buildFraudRiskReq","output_script_id":"extractFraudRisk"}',
-    'ORDER', 'ORDER', 1, 600, 'risk-control', 'lisi', 'DRAFT'
+    'ORDER', 'ORDER', 1, 600, 'risk-control', 'lisi', 'ACTIVE'
 );
 
 -- ============================================================
@@ -177,7 +177,7 @@ INSERT INTO t_feature_config (
 -- 查询：保单下每个被保人的全部 customerNos
 -- ============================================================
 
-INSERT INTO t_feature_script (script_id, script_name, script_type, script_text, version, status, description) VALUES
+INSERT IGNORE INTO t_feature_script (script_id, script_name, script_type, script_text, version, status, description) VALUES
 ('buildOccupationRiskReq', '职业风险-入参映射', 'INPUT',
 'Map buildRequest(PolicyFeatureContext polCtx) {
     List<Map> insureds = polCtx.insureds.collect { insCtx ->
@@ -228,14 +228,14 @@ INSERT INTO t_feature_script (script_id, script_name, script_type, script_text, 
     return result
 }', 1, 'ACTIVE', '按 customerNo 反查被保人，取最高风险等级');
 
-INSERT INTO t_feature_config (
+INSERT IGNORE INTO t_feature_config (
     feature_code, feature_name, category, data_type, calc_type,
     calc_config, aggregation, storage_level,
     version, ttl_seconds, source_system, owner, status
 ) VALUES (
     'ins.occupationRisk', '职业风险等级', 'ATOMIC', 'INT', 'EXTERNAL_API',
     '{"service":{"discovery_type":"DIRECT","path":"https://occupation-risk.internal.api.com/v1/risk/evaluate","protocol":"HTTPS","method":"POST","timeout_ms":3000,"headers":{"Authorization":"Bearer ${env.OCCUPATION_API_TOKEN}"}},"input_script_id":"buildOccupationRiskReq","output_script_id":"extractOccupationRisk"}',
-    'POLICY', 'INSURED', 1, 1800, 'occupation-risk', 'wangwu', 'DRAFT'
+    'POLICY', 'INSURED', 1, 1800, 'occupation-risk', 'wangwu', 'ACTIVE'
 );
 
 -- ============================================================
@@ -243,7 +243,7 @@ INSERT INTO t_feature_config (
 -- 查询：投保人的全部 customerNos
 -- ============================================================
 
-INSERT INTO t_feature_script (script_id, script_name, script_type, script_text, version, status, description) VALUES
+INSERT IGNORE INTO t_feature_script (script_id, script_name, script_type, script_text, version, status, description) VALUES
 ('buildIncomeVerifyReq', '收入核验-入参映射', 'INPUT',
 'Map buildRequest(PolicyFeatureContext polCtx) {
     def app = polCtx.applicantCtx
@@ -298,14 +298,14 @@ INSERT INTO t_feature_script (script_id, script_name, script_type, script_text, 
     return result
 }', 1, 'ACTIVE', '多客户号收入结果合并：全验证通过才为true，取最高收入值');
 
-INSERT INTO t_feature_config (
+INSERT IGNORE INTO t_feature_config (
     feature_code, feature_name, category, data_type, calc_type,
     calc_config, aggregation, storage_level,
     version, ttl_seconds, source_system, owner, status
 ) VALUES (
     'app.incomeVerified', '投保人收入核验', 'ATOMIC', 'BOOLEAN', 'EXTERNAL_API',
     '{"service":{"discovery_type":"STATIC","static_endpoints":["https://api.income-verify.gov.cn"],"protocol":"HTTPS","path":"/api/income/verify","method":"POST","timeout_ms":4000,"headers":{"X-Api-Key":"${env.INCOME_API_KEY}"}},"input_script_id":"buildIncomeVerifyReq","output_script_id":"extractIncomeVerify"}',
-    'POLICY', 'APPLICANT', 1, 600, 'income-verify', 'zhaoliu', 'DRAFT'
+    'POLICY', 'APPLICANT', 1, 600, 'income-verify', 'zhaoliu', 'ACTIVE'
 );
 
 -- ============================================================
@@ -313,7 +313,7 @@ INSERT INTO t_feature_config (
 -- （不涉及 customerNos，纯保单级查询）
 -- ============================================================
 
-INSERT INTO t_feature_script (script_id, script_name, script_type, script_text, version, status, description) VALUES
+INSERT IGNORE INTO t_feature_script (script_id, script_name, script_type, script_text, version, status, description) VALUES
 ('buildProductLimitReq', '产品保额-入参映射', 'INPUT',
 'Map buildRequest(PolicyFeatureContext polCtx) {
     return [
@@ -335,14 +335,14 @@ INSERT INTO t_feature_script (script_id, script_name, script_type, script_text, 
     ]
 }', 1, 'ACTIVE', '产品保额限制直接存入保单特征');
 
-INSERT INTO t_feature_config (
+INSERT IGNORE INTO t_feature_config (
     feature_code, feature_name, category, data_type, calc_type,
     calc_config, aggregation, storage_level,
     version, ttl_seconds, source_system, owner, status
 ) VALUES (
     'pol.maxSumAssured', '产品最大保额', 'ATOMIC', 'DECIMAL', 'EXTERNAL_API',
     '{"service":{"discovery_type":"DIRECT","path":"https://product-engine.internal.api.com/api/limit/query","protocol":"HTTPS","method":"POST","timeout_ms":2000},"input_script_id":"buildProductLimitReq","output_script_id":"extractProductLimit"}',
-    'POLICY', 'POLICY', 1, 3600, 'product-engine', 'sunqi', 'DRAFT'
+    'POLICY', 'POLICY', 1, 3600, 'product-engine', 'sunqi', 'ACTIVE'
 );
 
 -- ============================================================
@@ -350,31 +350,31 @@ INSERT INTO t_feature_config (
 -- ============================================================
 
 -- 被保人信用评分 >= 600（从语义 Map 中取 score 子字段）
-INSERT INTO t_underwriting_rule (rule_code, rule_name, rule_type, expression, feature_codes, product_code, priority, status) VALUES
+INSERT IGNORE INTO t_underwriting_rule (rule_code, rule_name, rule_type, expression, feature_codes, product_code, priority, status) VALUES
 ('RULE_CREDIT_001', '信用评分达标', 'INSURED',
  '#root[''ins.creditScore''][''score''] >= 600',
  'ins.creditScore', 'HEALTH_A_001', 10, 1);
 
 -- 反欺诈风险评分 < 80（从语义 Map 中取 riskScore 子字段）
-INSERT INTO t_underwriting_rule (rule_code, rule_name, rule_type, expression, feature_codes, product_code, priority, status) VALUES
+INSERT IGNORE INTO t_underwriting_rule (rule_code, rule_name, rule_type, expression, feature_codes, product_code, priority, status) VALUES
 ('RULE_FRAUD_001', '反欺诈风险可控', 'INSURED',
  '#root[''ord.fraudRiskScore''][''riskScore''] < 80',
  'ord.fraudRiskScore', 'HEALTH_A_001', 5, 1);
 
 -- 职业风险等级 ≤ 3（从语义 Map 中取 riskClass 子字段）
-INSERT INTO t_underwriting_rule (rule_code, rule_name, rule_type, expression, feature_codes, product_code, priority, status) VALUES
+INSERT IGNORE INTO t_underwriting_rule (rule_code, rule_name, rule_type, expression, feature_codes, product_code, priority, status) VALUES
 ('RULE_OCCUPATION_001', '职业风险等级检查', 'INSURED',
  '#root[''ins.occupationRisk''][''riskClass''] <= 3',
  'ins.occupationRisk', 'ACCIDENT_B_002', 20, 1);
 
 -- 投保人收入核验必须通过（从语义 Map 中取 incomeVerified 子字段）
-INSERT INTO t_underwriting_rule (rule_code, rule_name, rule_type, expression, feature_codes, product_code, priority, status) VALUES
+INSERT IGNORE INTO t_underwriting_rule (rule_code, rule_name, rule_type, expression, feature_codes, product_code, priority, status) VALUES
 ('RULE_INCOME_001', '投保人收入核验', 'APPLICANT',
  '#root[''app.incomeVerified''][''incomeVerified''] == true',
  'app.incomeVerified', 'HEALTH_A_001', 15, 1);
 
 -- 保额上限检查（从语义 Map 中取 maxSumAssured 子字段）
-INSERT INTO t_underwriting_rule (rule_code, rule_name, rule_type, expression, feature_codes, product_code, priority, status) VALUES
+INSERT IGNORE INTO t_underwriting_rule (rule_code, rule_name, rule_type, expression, feature_codes, product_code, priority, status) VALUES
 ('RULE_PRODUCT_001', '保额上限检查', 'POLICY',
  '#root[''pol.maxSumAssured''][''maxSumAssured''] > 0',
  'pol.maxSumAssured', 'ACCIDENT_B_002', 25, 1);
@@ -385,58 +385,58 @@ INSERT INTO t_underwriting_rule (rule_code, rule_name, rule_type, expression, fe
 -- ============================================================
 
 -- 被保人年龄
-INSERT INTO t_feature_config (
+INSERT IGNORE INTO t_feature_config (
     feature_code, feature_name, category, data_type, calc_type,
     calc_config, aggregation, storage_level,
     version, ttl_seconds, source_system, owner, status
 ) VALUES (
     'ins.age', '被保人年龄', 'ATOMIC', 'INT', 'PARAM_MAPPING',
     '{"source":"insured.age"}',
-    'POLICY', 'INSURED', 1, -1, 'request', 'admin', 'DRAFT'
+    'POLICY', 'INSURED', 1, -1, 'request', 'admin', 'ACTIVE'
 );
 
 -- 被保人性别
-INSERT INTO t_feature_config (
+INSERT IGNORE INTO t_feature_config (
     feature_code, feature_name, category, data_type, calc_type,
     calc_config, aggregation, storage_level,
     version, ttl_seconds, source_system, owner, status
 ) VALUES (
     'ins.gender', '被保人性别', 'ATOMIC', 'STRING', 'PARAM_MAPPING',
     '{"source":"insured.gender"}',
-    'POLICY', 'INSURED', 1, -1, 'request', 'admin', 'DRAFT'
+    'POLICY', 'INSURED', 1, -1, 'request', 'admin', 'ACTIVE'
 );
 
 -- 被保人职业
-INSERT INTO t_feature_config (
+INSERT IGNORE INTO t_feature_config (
     feature_code, feature_name, category, data_type, calc_type,
     calc_config, aggregation, storage_level,
     version, ttl_seconds, source_system, owner, status
 ) VALUES (
     'ins.occupation', '被保人职业', 'ATOMIC', 'STRING', 'PARAM_MAPPING',
     '{"source":"insured.occupation"}',
-    'POLICY', 'INSURED', 1, -1, 'request', 'admin', 'DRAFT'
+    'POLICY', 'INSURED', 1, -1, 'request', 'admin', 'ACTIVE'
 );
 
 -- 投保金额（订单级：为每个相关保单取 appliedAmount → POLICY 存储）
-INSERT INTO t_feature_config (
+INSERT IGNORE INTO t_feature_config (
     feature_code, feature_name, category, data_type, calc_type,
     calc_config, aggregation, storage_level,
     version, ttl_seconds, source_system, owner, status
 ) VALUES (
     'pol.appliedAmount', '投保金额', 'ATOMIC', 'DECIMAL', 'PARAM_MAPPING',
     '{"source":"policy.appliedAmount"}',
-    'ORDER', 'POLICY', 1, -1, 'request', 'admin', 'DRAFT'
+    'ORDER', 'POLICY', 1, -1, 'request', 'admin', 'ACTIVE'
 );
 
 -- 渠道编码（订单级 → ORDER 存储）
-INSERT INTO t_feature_config (
+INSERT IGNORE INTO t_feature_config (
     feature_code, feature_name, category, data_type, calc_type,
     calc_config, aggregation, storage_level,
     version, ttl_seconds, source_system, owner, status
 ) VALUES (
     'ord.channel', '渠道编码', 'ATOMIC', 'STRING', 'PARAM_MAPPING',
     '{"source":"order.channel"}',
-    'ORDER', 'ORDER', 1, -1, 'request', 'admin', 'DRAFT'
+    'ORDER', 'ORDER', 1, -1, 'request', 'admin', 'ACTIVE'
 );
 
 -- ============================================================
@@ -444,13 +444,13 @@ INSERT INTO t_feature_config (
 -- ============================================================
 
 -- 被保人年龄 ≥ 18
-INSERT INTO t_underwriting_rule (rule_code, rule_name, rule_type, expression, feature_codes, product_code, priority, status) VALUES
+INSERT IGNORE INTO t_underwriting_rule (rule_code, rule_name, rule_type, expression, feature_codes, product_code, priority, status) VALUES
 ('RULE_AGE_001', '被保人成年检查', 'INSURED',
  '#root[''ins.age''] >= 18',
  'ins.age', 'HEALTH_A_001', 10, 1);
 
 -- 被保人性别有效
-INSERT INTO t_underwriting_rule (rule_code, rule_name, rule_type, expression, feature_codes, product_code, priority, status) VALUES
+INSERT IGNORE INTO t_underwriting_rule (rule_code, rule_name, rule_type, expression, feature_codes, product_code, priority, status) VALUES
 ('RULE_GENDER_001', '被保人性别有效性', 'INSURED',
  '#root[''ins.gender''] != null',
  'ins.gender', 'HEALTH_A_001', 10, 1);
@@ -460,7 +460,7 @@ INSERT INTO t_underwriting_rule (rule_code, rule_name, rule_type, expression, fe
 -- BASE_RISK (EXTERNAL_API) → RISK_SCORE / FRAUD_CHECK (PARAM_MAPPING)
 -- ============================================================
 
-INSERT INTO t_feature_script (script_id, script_name, script_type, script_text, version, status, description) VALUES
+INSERT IGNORE INTO t_feature_script (script_id, script_name, script_type, script_text, version, status, description) VALUES
 ('buildBaseRiskReq', '基础风险-入参映射', 'INPUT',
 'Map buildRequest(OrderFeatureContext ctx) {
     List<Map> persons = []
@@ -501,48 +501,48 @@ INSERT INTO t_feature_script (script_id, script_name, script_type, script_text, 
 }', 1, 'ACTIVE', '语义化字段名：riskScore / fraudScore / amlFlag，Handler 包裹 featureCode 后存入上下文');
 
 -- BASE_RISK：批量查询基础风险数据（ORDER 聚合, INSURED 存储）
-INSERT INTO t_feature_config (
+INSERT IGNORE INTO t_feature_config (
     feature_code, feature_name, category, data_type, calc_type,
     calc_config, aggregation, storage_level,
     version, ttl_seconds, source_system, owner, status, depends_on
 ) VALUES (
     'BASE_RISK', '基础风险批量查询', 'ATOMIC', 'JSON', 'EXTERNAL_API',
     '{"service":{"discovery_type":"STATIC","static_endpoints":["https://api.risk.internal.com"],"protocol":"HTTPS","path":"/v1/risk/batch","method":"POST","timeout_ms":3000},"input_script_id":"buildBaseRiskReq","output_script_id":"extractBaseRisk"}',
-    'ORDER', 'INSURED', 1, 300, 'risk-engine', 'admin', 'DRAFT',
+    'ORDER', 'INSURED', 1, 300, 'risk-engine', 'admin', 'ACTIVE',
     '[]'
 );
 
 -- RISK_SCORE：从 BASE_RISK 中提取 riskScore 子字段（新 feature 实体类型）
-INSERT INTO t_feature_config (
+INSERT IGNORE INTO t_feature_config (
     feature_code, feature_name, category, data_type, calc_type,
     calc_config, aggregation, storage_level,
     version, ttl_seconds, source_system, owner, status, depends_on
 ) VALUES (
     'RISK_SCORE', '风险评分', 'ATOMIC', 'INT', 'PARAM_MAPPING',
     '{"source":"feature.BASE_RISK.riskScore"}',
-    'ORDER', 'INSURED', 1, -1, 'request', 'admin', 'DRAFT',
+    'ORDER', 'INSURED', 1, -1, 'request', 'admin', 'ACTIVE',
     '["BASE_RISK"]'
 );
 
 -- FRAUD_CHECK：从 BASE_RISK 中提取 fraudScore 子字段（新 feature 实体类型）
-INSERT INTO t_feature_config (
+INSERT IGNORE INTO t_feature_config (
     feature_code, feature_name, category, data_type, calc_type,
     calc_config, aggregation, storage_level,
     version, ttl_seconds, source_system, owner, status, depends_on
 ) VALUES (
     'FRAUD_CHECK', '反欺诈检查', 'ATOMIC', 'INT', 'PARAM_MAPPING',
     '{"source":"feature.BASE_RISK.fraudScore"}',
-    'ORDER', 'INSURED', 1, -1, 'request', 'admin', 'DRAFT',
+    'ORDER', 'INSURED', 1, -1, 'request', 'admin', 'ACTIVE',
     '["BASE_RISK"]'
 );
 
 -- 对应规则
-INSERT INTO t_underwriting_rule (rule_code, rule_name, rule_type, expression, feature_codes, product_code, priority, status) VALUES
+INSERT IGNORE INTO t_underwriting_rule (rule_code, rule_name, rule_type, expression, feature_codes, product_code, priority, status) VALUES
 ('RULE_BATCH_RISK_001', '风险评分达标', 'INSURED',
  '#root[''RISK_SCORE''] >= 60',
  'RISK_SCORE', 'HEALTH_A_001', 8, 1);
 
-INSERT INTO t_underwriting_rule (rule_code, rule_name, rule_type, expression, feature_codes, product_code, priority, status) VALUES
+INSERT IGNORE INTO t_underwriting_rule (rule_code, rule_name, rule_type, expression, feature_codes, product_code, priority, status) VALUES
 ('RULE_BATCH_FRAUD_001', '反欺诈检查通过', 'INSURED',
  '#root[''FRAUD_CHECK''] < 80',
  'FRAUD_CHECK', 'HEALTH_A_001', 7, 1);
@@ -567,6 +567,28 @@ INSERT INTO t_underwriting_rule (rule_code, rule_name, rule_type, expression, fe
 --   insCtx.customerNos.contains("CUST_B_002") → 归属同一个 insCtx
 --   → 合并策略：取 max(680, 720) = 720 → 归入该被保人
 --
+-- ============================================================
+-- 场景 12~14：补充缺失的 Aggregation×Storage 组合（PARAM_MAPPING）
+-- ============================================================
+
+-- ORDER→APPLICANT: 在 ORDER 级聚合计算，结果按 policyId 路由到各保单的投保人
+INSERT IGNORE INTO t_feature_config (feature_code, feature_name, category, data_type, calc_type,
+    calc_config, aggregation, storage_level, version, ttl_seconds, source_system, owner, status
+) VALUES ('ord.applicantRiskLevel', '订单投保人风险等级', 'ATOMIC', 'STRING', 'PARAM_MAPPING',
+    '{"source":"order.channel"}', 'ORDER', 'APPLICANT', 1, -1, 'test', 'admin', 'ACTIVE');
+
+-- APPLICANT→APPLICANT: 每个投保人独立执行，直接写入自身特征
+INSERT IGNORE INTO t_feature_config (feature_code, feature_name, category, data_type, calc_type,
+    calc_config, aggregation, storage_level, version, ttl_seconds, source_system, owner, status
+) VALUES ('app.creditRating', '投保人信用等级', 'ATOMIC', 'STRING', 'PARAM_MAPPING',
+    '{"source":"applicant.idNo"}', 'APPLICANT', 'APPLICANT', 1, -1, 'test', 'admin', 'ACTIVE');
+
+-- INSURED→INSURED: 每个被保人独立执行，直接写入自身特征
+INSERT IGNORE INTO t_feature_config (feature_code, feature_name, category, data_type, calc_type,
+    calc_config, aggregation, storage_level, version, ttl_seconds, source_system, owner, status
+) VALUES ('ins.personalRisk', '被保人个人风险', 'ATOMIC', 'INT', 'PARAM_MAPPING',
+    '{"source":"insured.age"}', 'INSURED', 'INSURED', 1, -1, 'test', 'admin', 'ACTIVE');
+
 -- 合并策略（按特征语义）：
 --   评分类 (creditScore) → 取最高分
 --   风险类 (riskClass)   → 取最高风险

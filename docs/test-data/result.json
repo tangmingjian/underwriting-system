@@ -1,0 +1,70 @@
+{
+  "orderFeatures": {},
+  "insuredFeatures": {
+    "POL_001": {
+      "INS_001": {
+        "ins.age": 36,
+        "ins.gender": "M",
+        "ins.creditScore": {
+          "score": 750,
+          "level": "A",
+          "custNo": "CUST_A_003",
+          "time": "2026-05-20T10:00:00"
+        }
+      },
+      "INS_002": {
+        "ins.age": 31,
+        "ins.gender": "F",
+        "ins.creditScore": {
+          "score": 650,
+          "level": "B",
+          "custNo": "CUST_B_001",
+          "time": "2026-05-15T10:00:00"
+        }
+      }
+    },
+    "POL_002": {
+      "INS_003": {
+        "ins.occupationRisk": {
+          "riskClass": 4,
+          "riskDesc": "中风险职业",
+          "custNo": "CUST_D_002"
+        },
+        "ins.occupation": "会计",
+        "ins.gender": "F"
+      },
+      "INS_001": {
+        "ins.occupationRisk": {
+          "riskClass": 5,
+          "riskDesc": "低风险职业",
+          "custNo": "CUST_A_001"
+        },
+        "ins.occupation": "软件工程师",
+        "ins.gender": "M"
+      }
+    }
+  },
+  "applicantFeatures": {
+    "POL_001": {
+      "APP_001": {
+        "app.incomeVerified": {
+          "incomeVerified": false,
+          "auditedIncome": 390625.0,
+          "incomeLevel": "HIGH",
+          "matchCustNos": "CUST_A_001,CUST_A_002,CUST_A_003"
+        }
+      }
+    },
+    "POL_002": {
+      "APP_002": {
+        "app.incomeVerified": {
+          "incomeVerified": false,
+          "auditedIncome": 437807.0,
+          "incomeLevel": "LOW",
+          "matchCustNos": "CUST_C_001"
+        }
+      }
+    }
+  },
+  "policyFeatures": {}
+}

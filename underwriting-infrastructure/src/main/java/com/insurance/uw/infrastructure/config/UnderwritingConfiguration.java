@@ -1,6 +1,8 @@
 package com.insurance.uw.infrastructure.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.insurance.uw.infrastructure.cache.CacheOps;
 import com.insurance.uw.infrastructure.client.DownstreamApiClientImpl;
 import com.insurance.uw.infrastructure.client.MockDownstreamApiClient;
@@ -9,11 +11,15 @@ import com.insurance.uw.infrastructure.client.discovery.NacosServiceDiscoveryStr
 import com.insurance.uw.infrastructure.client.discovery.ServiceDiscoveryRouter;
 import com.insurance.uw.infrastructure.client.discovery.ServiceDiscoveryStrategy;
 import com.insurance.uw.infrastructure.client.discovery.StaticServiceDiscoveryStrategy;
+import io.github.resilience4j.circuitbreaker.CircuitBreaker;
+import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig;
 import com.insurance.uw.domain.repository.FeatureConfigRepository;
 import com.insurance.uw.domain.repository.FeatureScriptRepository;
 import com.insurance.uw.domain.repository.UnderwritingRuleRepository;
 import com.insurance.uw.domain.service.DownstreamApiClient;
+import com.insurance.uw.domain.service.FeatureResultCache;
 import com.insurance.uw.domain.service.GroovyMappingEngine;
+import com.insurance.uw.infrastructure.cache.RedisFeatureResultCache;
 import com.insurance.uw.infrastructure.groovy.GroovyMappingEngineImpl;
 import com.insurance.uw.infrastructure.persistence.*;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -44,7 +50,10 @@ public class UnderwritingConfiguration {
     @Bean
     @ConditionalOnMissingBean
     public RestTemplate restTemplate() {
-        return new RestTemplate();
+        var factory = new org.springframework.http.client.SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(java.time.Duration.ofSeconds(5));
+        factory.setReadTimeout(java.time.Duration.ofSeconds(30));
+        return new RestTemplate(factory);
     }
 
     @Bean
@@ -93,14 +102,26 @@ public class UnderwritingConfiguration {
     @Bean
     @Profile("!mock")
     public DownstreamApiClient downstreamApiClient(RestTemplate restTemplate,
-                                                    ServiceDiscoveryRouter router) {
-        return new DownstreamApiClientImpl(restTemplate, router);
+                                                    ServiceDiscoveryRouter router,
+                                                    CircuitBreaker downstreamApiCircuitBreaker) {
+        return new DownstreamApiClientImpl(restTemplate, router, downstreamApiCircuitBreaker);
     }
 
     @Bean
     @Profile("mock")
     public DownstreamApiClient mockDownstreamApiClient() {
         return new MockDownstreamApiClient();
+    }
+
+    @Bean
+    public CircuitBreaker downstreamApiCircuitBreaker() {
+        CircuitBreakerConfig config = CircuitBreakerConfig.custom()
+                .failureRateThreshold(50)
+                .waitDurationInOpenState(Duration.ofSeconds(30))
+                .slidingWindowSize(10)
+                .minimumNumberOfCalls(5)
+                .build();
+        return CircuitBreaker.of("downstream-api", config);
     }
 
     // ==================== 特征取数线程池 ====================
@@ -125,17 +146,15 @@ public class UnderwritingConfiguration {
     // ==================== 缓存 ====================
 
     @Bean
-    public CacheOps cacheOps(StringRedisTemplate stringRedisTemplate,
-                              @Qualifier("cacheObjectMapper") ObjectMapper objectMapper) {
-        return new CacheOps(stringRedisTemplate, objectMapper);
+    public CacheOps cacheOps(StringRedisTemplate stringRedisTemplate) {
+        return new CacheOps(stringRedisTemplate, new ObjectMapper()
+                .registerModule(new JavaTimeModule())
+                .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS));
     }
 
-    /**
-     * 缓存专用 ObjectMapper（可独立配置，避免与全局 ObjectMapper 互相影响）
-     */
-    @Bean("cacheObjectMapper")
-    public ObjectMapper cacheObjectMapper() {
-        return new ObjectMapper();
+    @Bean
+    public FeatureResultCache featureResultCache(CacheOps cacheOps) {
+        return new RedisFeatureResultCache(cacheOps);
     }
 
     @Bean

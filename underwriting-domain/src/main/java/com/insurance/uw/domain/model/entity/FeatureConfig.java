@@ -2,6 +2,7 @@ package com.insurance.uw.domain.model.entity;
 
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.insurance.uw.common.enums.*;
 import com.insurance.uw.domain.model.valueobject.CalcConfig;
 import com.insurance.uw.domain.persistence.JsonListTypeHandler;
@@ -122,6 +123,7 @@ public class FeatureConfig {
 
     // ==================== 便捷方法 ====================
 
+    @JsonIgnore
     public boolean isEnabled() {
         return status == FeatureStatus.ACTIVE;
     }
@@ -135,6 +137,7 @@ public class FeatureConfig {
      * - DIRECT → path（同路径可合并）
      * - 其他 calc_type 或无 service 配置 → fallback 到 featureCode（各自独立，不合并）
      */
+    @JsonIgnore
     public String getServiceKey() {
         CalcConfig cc = getCalcConfig();
         if (cc == null || cc.getService() == null) {

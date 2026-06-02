@@ -11,6 +11,7 @@ import com.insurance.uw.domain.model.entity.FeatureConfig;
 import com.insurance.uw.domain.model.entity.Order;
 import com.insurance.uw.domain.repository.FeatureConfigRepository;
 import com.insurance.uw.domain.service.FeatureDependencyResolver;
+import com.insurance.uw.domain.service.FeatureResultCache;
 import com.insurance.uw.feature.api.FeatureExtractionRequest;
 import com.insurance.uw.feature.api.FeatureExtractionResult;
 import com.insurance.uw.feature.api.FeatureExtractionService;
@@ -19,7 +20,7 @@ import com.insurance.uw.feature.core.handler.FeatureCalcHandler;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
-import java.util.stream.Collectors;
+import java.util.function.BiConsumer;
 
 /**
  * 特征取数服务实现 — 核心调度器
@@ -37,10 +38,12 @@ public class FeatureExtractionServiceImpl implements FeatureExtractionService {
     private final FeatureDependencyResolver dependencyResolver;
     private final ExecutorService executor;
     private final Map<CalcType, FeatureCalcHandler> calcHandlers;
+    private final FeatureResultCache resultCache;
 
     public FeatureExtractionServiceImpl(FeatureConfigRepository featureConfigRepository,
                                         ExecutorService executor,
-                                        List<FeatureCalcHandler> handlers) {
+                                        List<FeatureCalcHandler> handlers,
+                                        FeatureResultCache resultCache) {
         this.featureConfigRepository = featureConfigRepository;
         this.dependencyResolver = new FeatureDependencyResolver();
         this.executor = executor;
@@ -48,6 +51,7 @@ public class FeatureExtractionServiceImpl implements FeatureExtractionService {
         for (FeatureCalcHandler h : handlers) {
             this.calcHandlers.put(h.getSupportedType(), h);
         }
+        this.resultCache = resultCache;
     }
 
     @Override
@@ -55,12 +59,12 @@ public class FeatureExtractionServiceImpl implements FeatureExtractionService {
         Order order = request.getOrder();
         OrderFeatureContext orderCtx = new OrderFeatureContext(order);
 
-        // 注入特征→被保人/保单映射（由调用方 RuleApplicationService 推导）
-        if (request.getFeatureToInsuredIds() != null) {
-            orderCtx.setFeatureInsuredMapping(request.getFeatureToInsuredIds());
+        // 注入逐保单隔离的特征映射（由调用方 RuleApplicationService 推导）
+        if (request.getPolicyInsuredFeatureMap() != null) {
+            orderCtx.setPolicyInsuredFeatureMap(request.getPolicyInsuredFeatureMap());
         }
-        if (request.getFeatureToPolicyIds() != null) {
-            orderCtx.setFeaturePolicyMapping(request.getFeatureToPolicyIds());
+        if (request.getPolicyApplicantFeatureMap() != null) {
+            orderCtx.setPolicyApplicantFeatureMap(request.getPolicyApplicantFeatureMap());
         }
 
         Set<String> requestedCodes = request.getFeatureCodes();
@@ -77,7 +81,9 @@ public class FeatureExtractionServiceImpl implements FeatureExtractionService {
 
         // 按拓扑层级依次执行
         for (Set<String> layer : layers) {
-            executeLayer(orderCtx, layer, configMap);
+            executeLayer(orderCtx, layer, configMap,
+                    request.getPolicyInsuredFeatureMap(),
+                    request.getPolicyApplicantFeatureMap());
         }
 
         return convertToResult(orderCtx);
@@ -141,14 +147,16 @@ public class FeatureExtractionServiceImpl implements FeatureExtractionService {
      */
     private void executeLayer(OrderFeatureContext orderCtx,
                               Set<String> layer,
-                              Map<String, FeatureConfig> configMap) {
+                              Map<String, FeatureConfig> configMap,
+                              Map<String, Map<String, Set<String>>> policyInsuredFeatureMap,
+                              Map<String, Map<String, Set<String>>> policyApplicantFeatureMap) {
         Map<AggregationLevel, List<String>> byAgg = groupByAggregation(layer, configMap);
 
         List<CompletableFuture<Void>> futures = new ArrayList<>();
-        futures.addAll(executeOrderLayer(orderCtx, byAgg.getOrDefault(AggregationLevel.ORDER, List.of()), configMap));
-        futures.addAll(executePolicyLayer(orderCtx, byAgg.getOrDefault(AggregationLevel.POLICY, List.of()), configMap));
-        futures.addAll(executeInsuredLayer(orderCtx, byAgg.getOrDefault(AggregationLevel.INSURED, List.of()), configMap));
-        futures.addAll(executeApplicantLayer(orderCtx, byAgg.getOrDefault(AggregationLevel.APPLICANT, List.of()), configMap));
+        futures.addAll(executeOrderLayer(orderCtx, byAgg.getOrDefault(AggregationLevel.ORDER, List.of()), configMap, policyInsuredFeatureMap, policyApplicantFeatureMap));
+        futures.addAll(executePolicyLayer(orderCtx, byAgg.getOrDefault(AggregationLevel.POLICY, List.of()), configMap, policyInsuredFeatureMap, policyApplicantFeatureMap));
+        futures.addAll(executeInsuredLayer(orderCtx, byAgg.getOrDefault(AggregationLevel.INSURED, List.of()), configMap, policyInsuredFeatureMap));
+        futures.addAll(executeApplicantLayer(orderCtx, byAgg.getOrDefault(AggregationLevel.APPLICANT, List.of()), configMap, policyApplicantFeatureMap));
 
         CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
     }
@@ -179,146 +187,199 @@ public class FeatureExtractionServiceImpl implements FeatureExtractionService {
         return groups;
     }
 
-    // ==================== ORDER 级 ====================
+    // ==================== 通用分组执行引擎 ====================
 
     /**
-     * ORDER 级：整个订单执行一次。同服务同层级 EXTERNAL_API 特征合并为一次批量调用。
+     * 通用特征分组执行引擎：服务分组 → 过滤 → 批量/分发 → 存储。
+     *
+     * @param ctx          执行上下文，传递给 calcHandler
+     * @param featureCodes 本层特征码列表
+     * @param configMap    特征配置索引
+     * @param needed       需要的特征集（null/empty = 不过滤，执行全部）
+     * @param futures      并发任务收集器
+     * @param storer       结果存储回调 (FeatureConfig, results) → void
      */
-    private List<CompletableFuture<Void>> executeOrderLayer(OrderFeatureContext orderCtx,
-                                                             List<String> featureCodes,
-                                                             Map<String, FeatureConfig> configMap) {
+    private void executeGroups(Object ctx,
+                               List<String> featureCodes,
+                               Map<String, FeatureConfig> configMap,
+                               Set<String> needed,
+                               List<CompletableFuture<Void>> futures,
+                               BiConsumer<FeatureConfig, Map<String, Object>> storer) {
         if (featureCodes.isEmpty()) {
-            return List.of();
+            return;
         }
-        List<CompletableFuture<Void>> futures = new ArrayList<>();
+
         Map<String, List<String>> groups = groupByServiceKey(featureCodes, configMap);
 
         for (List<String> group : groups.values()) {
-            List<FeatureConfig> cfgs = group.stream().map(configMap::get).toList();
-            if (canBatch(group, cfgs)) {
+            List<String> applicable = (needed == null || needed.isEmpty())
+                    ? group : group.stream().filter(needed::contains).toList();
+            if (applicable.isEmpty()) {
+                continue;
+            }
+
+            List<FeatureConfig> cfgs = applicable.stream().map(configMap::get).toList();
+            if (canBatch(applicable, cfgs)) {
                 futures.add(CompletableFuture.runAsync(() -> {
                     Map<String, Map<String, Object>> batchResults =
-                            calcHandlers.get(CalcType.EXTERNAL_API).executeBatch(orderCtx, cfgs);
-                    for (String fc : group) {
+                            calcHandlers.get(CalcType.EXTERNAL_API).executeBatch(ctx, cfgs);
+                    for (String fc : applicable) {
                         Map<String, Object> results = batchResults.get(fc);
-                        if (results != null) storeResults(orderCtx, configMap.get(fc), results);
+                        if (results != null) {
+                            storer.accept(configMap.get(fc), results);
+                        }
                     }
                 }, executor));
             } else {
-                for (String fc : group) {
+                for (String fc : applicable) {
                     FeatureConfig cfg = configMap.get(fc);
-                    futures.add(CompletableFuture.runAsync(() ->
-                            executeOne(orderCtx, cfg, (ctx, results) ->
-                                    storeResults(orderCtx, cfg, results)
-                            ), executor));
+                    dispatchFeature(cfg, futures, () ->
+                            executeOne(ctx, cfg, results -> storer.accept(cfg, results)));
                 }
             }
         }
+    }
+
+    // ==================== ORDER 级 ====================
+
+    /**
+     * ORDER 级：整个订单执行一次，needed 为所有保单下被保人/投保人需要的特征并集+传递依赖。
+     */
+    private List<CompletableFuture<Void>> executeOrderLayer(OrderFeatureContext orderCtx,
+                                                             List<String> featureCodes,
+                                                             Map<String, FeatureConfig> configMap,
+                                                             Map<String, Map<String, Set<String>>> policyInsuredFeatureMap,
+                                                             Map<String, Map<String, Set<String>>> policyApplicantFeatureMap) {
+        Set<String> needed = expandDependencies(
+                collectAllNeeded(policyInsuredFeatureMap, policyApplicantFeatureMap), configMap);
+        List<CompletableFuture<Void>> futures = new ArrayList<>();
+        executeGroups(orderCtx, featureCodes, configMap, needed, futures,
+                (fc, results) -> storeResults(orderCtx, fc, results));
         return futures;
+    }
+
+    private static Set<String> collectAllNeeded(
+            Map<String, Map<String, Set<String>>> insuredMap,
+            Map<String, Map<String, Set<String>>> applicantMap) {
+        Set<String> directNeeded = new HashSet<>();
+        if (insuredMap != null) {
+            for (var byInsured : insuredMap.values()) {
+                for (var features : byInsured.values()) {
+                    directNeeded.addAll(features);
+                }
+            }
+        }
+        if (applicantMap != null) {
+            for (var byApplicant : applicantMap.values()) {
+                for (var features : byApplicant.values()) {
+                    directNeeded.addAll(features);
+                }
+            }
+        }
+        return directNeeded;
     }
 
     // ==================== POLICY 级 ====================
 
     /**
-     * POLICY 级：每个保单独立执行。同保单内同服务 EXTERNAL_API 特征合并为一次批量调用。
+     * POLICY 级：每个保单独立执行，needed 为该保单下被保人/投保人需要的特征并集+传递依赖。
      */
     private List<CompletableFuture<Void>> executePolicyLayer(OrderFeatureContext orderCtx,
                                                               List<String> featureCodes,
-                                                              Map<String, FeatureConfig> configMap) {
-        if (featureCodes.isEmpty()) {
-            return List.of();
-        }
+                                                              Map<String, FeatureConfig> configMap,
+                                                              Map<String, Map<String, Set<String>>> policyInsuredFeatureMap,
+                                                              Map<String, Map<String, Set<String>>> policyApplicantFeatureMap) {
         List<CompletableFuture<Void>> futures = new ArrayList<>();
-        Map<String, List<String>> groups = groupByServiceKey(featureCodes, configMap);
-
         for (PolicyFeatureContext polCtx : orderCtx.getPolicies()) {
-            for (List<String> group : groups.values()) {
-                List<FeatureConfig> cfgs = group.stream().map(configMap::get).toList();
-                if (canBatch(group, cfgs)) {
-                    futures.add(CompletableFuture.runAsync(() -> {
-                        Map<String, Map<String, Object>> batchResults =
-                                calcHandlers.get(CalcType.EXTERNAL_API).executeBatch(polCtx, cfgs);
-                        for (String fc : group) {
-                            Map<String, Object> results = batchResults.get(fc);
-                            if (results != null) storePolicyResults(polCtx, configMap.get(fc), results);
-                        }
-                    }, executor));
-                } else {
-                    for (String fc : group) {
-                        FeatureConfig cfg = configMap.get(fc);
-                        futures.add(CompletableFuture.runAsync(() ->
-                                executeOne(polCtx, cfg, (ctx, results) ->
-                                        storePolicyResults(polCtx, cfg, results)
-                                ), executor));
-                    }
-                }
-            }
+            Set<String> needed = expandDependencies(
+                    collectPolicyNeeded(polCtx.getPolicyId(), policyInsuredFeatureMap, policyApplicantFeatureMap),
+                    configMap);
+            executeGroups(polCtx, featureCodes, configMap, needed, futures,
+                    (fc, results) -> storePolicyResults(polCtx, fc, results));
         }
         return futures;
+    }
+
+    private static Set<String> collectPolicyNeeded(String policyId,
+                                                    Map<String, Map<String, Set<String>>> insuredMap,
+                                                    Map<String, Map<String, Set<String>>> applicantMap) {
+        Set<String> directNeeded = new HashSet<>();
+        if (insuredMap != null) {
+            var byInsured = insuredMap.getOrDefault(policyId, Map.of());
+            byInsured.values().forEach(directNeeded::addAll);
+        }
+        if (applicantMap != null) {
+            var byApplicant = applicantMap.getOrDefault(policyId, Map.of());
+            byApplicant.values().forEach(directNeeded::addAll);
+        }
+        return directNeeded;
     }
 
     // ==================== INSURED 级 ====================
 
     /**
-     * INSURED 级：每个被保人独立执行。因上下文已是单一被保人，不在此层做批处理合并。
+     * INSURED 级：每个被保人独立执行，按保单+被保人过滤所需特征。
      */
     private List<CompletableFuture<Void>> executeInsuredLayer(OrderFeatureContext orderCtx,
                                                                List<String> featureCodes,
-                                                               Map<String, FeatureConfig> configMap) {
-        if (featureCodes.isEmpty()) {
-            return List.of();
-        }
+                                                               Map<String, FeatureConfig> configMap,
+                                                               Map<String, Map<String, Set<String>>> policyInsuredFeatureMap) {
         List<CompletableFuture<Void>> futures = new ArrayList<>();
         for (InsuredFeatureContext insCtx : orderCtx.getAllInsuredContexts()) {
-            for (String fc : featureCodes) {
-                futures.add(CompletableFuture.runAsync(() ->
-                        executeInsuredFeature(insCtx, configMap.get(fc)), executor));
-            }
+            Set<String> needed = (policyInsuredFeatureMap != null)
+                    ? policyInsuredFeatureMap
+                        .getOrDefault(insCtx.getPolicyContext().getPolicyId(), Map.of())
+                        .getOrDefault(insCtx.getInsuredId(), null)
+                    : null;
+            executeGroups(insCtx, featureCodes, configMap, needed, futures,
+                    (fc, results) -> storeInsuredResults(insCtx, fc, results));
         }
         return futures;
-    }
-
-    private void executeInsuredFeature(InsuredFeatureContext insCtx, FeatureConfig fc) {
-        executeOne(insCtx, fc, (c, r) -> storeInsuredResults((InsuredFeatureContext) c, fc, r));
     }
 
     // ==================== APPLICANT 级 ====================
 
     /**
-     * APPLICANT 级：每个投保人独立执行。
+     * APPLICANT 级：每个投保人独立执行，按保单+投保人过滤所需特征。
      */
     private List<CompletableFuture<Void>> executeApplicantLayer(OrderFeatureContext orderCtx,
                                                                  List<String> featureCodes,
-                                                                 Map<String, FeatureConfig> configMap) {
-        if (featureCodes.isEmpty()) {
-            return List.of();
-        }
+                                                                 Map<String, FeatureConfig> configMap,
+                                                                 Map<String, Map<String, Set<String>>> policyApplicantFeatureMap) {
         List<CompletableFuture<Void>> futures = new ArrayList<>();
         for (PolicyFeatureContext polCtx : orderCtx.getPolicies()) {
             ApplicantFeatureContext appCtx = polCtx.getApplicantCtx();
-            if (appCtx == null) continue;
-            for (String fc : featureCodes) {
-                futures.add(CompletableFuture.runAsync(() ->
-                        executeApplicantFeature(appCtx, configMap.get(fc)), executor));
+            if (appCtx == null) {
+                continue;
             }
+            Set<String> needed = (policyApplicantFeatureMap != null)
+                    ? policyApplicantFeatureMap
+                        .getOrDefault(polCtx.getPolicyId(), Map.of())
+                        .getOrDefault(appCtx.getApplicantId(), null)
+                    : null;
+            executeGroups(appCtx, featureCodes, configMap, needed, futures,
+                    (fc, results) -> storeApplicantResults(appCtx, fc, results));
         }
         return futures;
-    }
-
-    private void executeApplicantFeature(ApplicantFeatureContext appCtx, FeatureConfig fc) {
-        executeOne(appCtx, fc, (c, r) -> storeApplicantResults((ApplicantFeatureContext) c, fc, r));
     }
 
     // ==================== 通用执行 & 批处理 ====================
 
     /**
-     * 单个特征执行模板：调用 handler → 存储结果。
+     * 单个特征执行模板：查结果缓存 → 调用 handler → 存储结果 → 回写缓存。
      */
     private void executeOne(Object ctx, FeatureConfig fc, ResultStorer storer) {
         try {
             Map<String, Object> results = executeByCalcType(ctx, fc);
             if (results != null) {
-                storer.store(ctx, results);
+                // 跨请求结果缓存：按 targetId 粒度
+                Integer ttlSeconds = fc.getTtlSeconds();
+                if (ttlSeconds != null && ttlSeconds > 0) {
+                    for (Map.Entry<String, Object> entry : results.entrySet()) {
+                        resultCache.put(fc.getFeatureCode(), entry.getKey(), entry.getValue(), ttlSeconds);
+                    }
+                }
+                storer.store(results);
             }
         } catch (Exception e) {
             throw new RuntimeException("执行特征 " + fc.getFeatureCode() + " 失败: " + e.getMessage(), e);
@@ -327,11 +388,24 @@ public class FeatureExtractionServiceImpl implements FeatureExtractionService {
 
     @FunctionalInterface
     private interface ResultStorer {
-        void store(Object ctx, Map<String, Object> results);
+        void store(Map<String, Object> results);
     }
 
     private static boolean canBatch(List<String> featureCodes, List<FeatureConfig> cfgs) {
         return featureCodes.size() > 1 && cfgs.get(0).getCalcType() == CalcType.EXTERNAL_API;
+    }
+
+    /**
+     * 按计算类型分发：PARAM_MAPPING 同步执行（纯 CPU 操作，避免线程池调度开销），
+     * 其他类型通过 CompletableFuture.runAsync 并发执行。
+     */
+    private void dispatchFeature(FeatureConfig cfg, List<CompletableFuture<Void>> futures,
+                                  Runnable action) {
+        if (cfg.getCalcType() == CalcType.PARAM_MAPPING) {
+            action.run();
+        } else {
+            futures.add(CompletableFuture.runAsync(action, executor));
+        }
     }
 
     // ==================== 按 calc_type 分发 ====================
@@ -500,13 +574,13 @@ public class FeatureExtractionServiceImpl implements FeatureExtractionService {
 
             ApplicantFeatureContext appCtx = polCtx.getApplicantCtx();
             if (appCtx != null && !appCtx.getFeatures().isEmpty()) {
-                result.getApplicantFeatures().put(appCtx.getApplicantId(),
+                result.putApplicantFeature(polCtx.getPolicyId(), appCtx.getApplicantId(),
                         new HashMap<>(appCtx.getFeatures()));
             }
 
             for (InsuredFeatureContext insCtx : polCtx.getInsureds()) {
                 if (!insCtx.getAcquiredFeatures().isEmpty()) {
-                    result.getInsuredFeatures().put(insCtx.getInsuredId(),
+                    result.putInsuredFeature(polCtx.getPolicyId(), insCtx.getInsuredId(),
                             new HashMap<>(insCtx.getAcquiredFeatures()));
                 }
             }

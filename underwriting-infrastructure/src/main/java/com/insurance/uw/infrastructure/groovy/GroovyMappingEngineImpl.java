@@ -1,5 +1,7 @@
 package com.insurance.uw.infrastructure.groovy;
 
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
 import com.insurance.uw.domain.service.GroovyMappingEngine;
 import groovy.lang.GroovyObject;
 import groovy.lang.GroovyClassLoader;
@@ -7,8 +9,7 @@ import org.codehaus.groovy.control.CompilerConfiguration;
 import org.codehaus.groovy.control.customizers.ImportCustomizer;
 import org.codehaus.groovy.runtime.InvokerHelper;
 
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import java.time.Duration;
 
 /**
  * Groovy 脚本映射引擎实现
@@ -19,7 +20,10 @@ import java.util.concurrent.ConcurrentHashMap;
 public class GroovyMappingEngineImpl implements GroovyMappingEngine {
 
     private final GroovyClassLoader classLoader;
-    private final Map<String, Class<GroovyObject>> scriptCache = new ConcurrentHashMap<>();
+    private final Cache<String, Class<GroovyObject>> scriptCache = Caffeine.newBuilder()
+            .maximumSize(200)
+            .expireAfterAccess(Duration.ofHours(1))
+            .build();
 
     public GroovyMappingEngineImpl() {
         CompilerConfiguration config = new CompilerConfiguration();
@@ -48,19 +52,19 @@ public class GroovyMappingEngineImpl implements GroovyMappingEngine {
 
     @Override
     public void evictScript(String scriptId) {
-        scriptCache.remove(scriptId);
+        scriptCache.invalidate(scriptId);
     }
 
     @SuppressWarnings("unchecked")
     private Class<GroovyObject> getScriptClass(String scriptId, String scriptText) {
-        return scriptCache.computeIfAbsent(scriptId, id -> classLoader.parseClass(scriptText));
+        return scriptCache.get(scriptId, id -> classLoader.parseClass(scriptText));
     }
 
     /**
      * 获取缓存大小（用于监控）
      */
-    public int getCacheSize() {
-        return scriptCache.size();
+    public long getCacheSize() {
+        return scriptCache.estimatedSize();
     }
 
 }

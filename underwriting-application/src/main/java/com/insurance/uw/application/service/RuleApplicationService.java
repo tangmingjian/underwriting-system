@@ -58,15 +58,15 @@ public class RuleApplicationService {
     public FeatureExtractionRequest buildExtractionRequest(Order order) {
         List<UnderwritingRule> allRules = repository.findAllEnabled();
 
-        Set<String> featureCodes = new LinkedHashSet<>();
-        Map<String, Set<String>> featureToInsuredIds = new HashMap<>();
-        Map<String, Set<String>> featureToPolicyIds = new HashMap<>();
+        Map<String, Map<String, Set<String>>> policyInsuredFeatureMap = new HashMap<>();
+        Map<String, Map<String, Set<String>>> policyApplicantFeatureMap = new HashMap<>();
 
         for (com.insurance.uw.domain.model.entity.Policy policy : order.getPolicies()) {
             String productCode = policy.getProduct() != null ? policy.getProduct().getProductCode() : null;
             Set<String> policyInsuredIds = policy.getInsureds().stream()
                     .map(com.insurance.uw.domain.model.entity.Insured::getId)
                     .collect(Collectors.toSet());
+            String applicantId = policy.getApplicant() != null ? policy.getApplicant().getId() : null;
 
             for (UnderwritingRule rule : allRules) {
                 if (rule.getProductCode() != null && !rule.getProductCode().equals(productCode)) {
@@ -79,9 +79,20 @@ public class RuleApplicationService {
                 for (String fc : featureCodesStr.split(",")) {
                     fc = fc.trim();
                     if (!fc.isEmpty()) {
-                        featureCodes.add(fc);
-                        featureToInsuredIds.computeIfAbsent(fc, k -> new HashSet<>()).addAll(policyInsuredIds);
-                        featureToPolicyIds.computeIfAbsent(fc, k -> new HashSet<>()).add(policy.getId());
+                        // 逐保单隔离：被保人特征
+                        for (String insuredId : policyInsuredIds) {
+                            policyInsuredFeatureMap
+                                    .computeIfAbsent(policy.getId(), k -> new HashMap<>())
+                                    .computeIfAbsent(insuredId, k -> new HashSet<>())
+                                    .add(fc);
+                        }
+                        // 逐保单隔离：投保人特征
+                        if (applicantId != null) {
+                            policyApplicantFeatureMap
+                                    .computeIfAbsent(policy.getId(), k -> new HashMap<>())
+                                    .computeIfAbsent(applicantId, k -> new HashSet<>())
+                                    .add(fc);
+                        }
                     }
                 }
             }
@@ -89,9 +100,8 @@ public class RuleApplicationService {
 
         FeatureExtractionRequest request = new FeatureExtractionRequest();
         request.setOrder(order);
-        request.setFeatureCodes(featureCodes);
-        request.setFeatureToInsuredIds(featureToInsuredIds);
-        request.setFeatureToPolicyIds(featureToPolicyIds);
+        request.setPolicyInsuredFeatureMap(policyInsuredFeatureMap);
+        request.setPolicyApplicantFeatureMap(policyApplicantFeatureMap);
         return request;
     }
 
@@ -136,7 +146,7 @@ public class RuleApplicationService {
                 for (com.insurance.uw.domain.model.entity.Policy policy : order.getPolicies()) {
                     if (policy.getApplicant() == null) continue;
                     String applicantId = policy.getApplicant().getId();
-                    Map<String, Object> features = collectForApplicant(result, applicantId);
+                    Map<String, Object> features = collectForApplicant(result, applicantId, policy.getId());
                     boolean passed = evaluateExpression(rule.getExpression(), features);
                     results.add(new UnderwritingResult(
                             "APPLICANT", applicantId, policy.getApplicant().getName(),
@@ -180,19 +190,20 @@ public class RuleApplicationService {
             Map<String, Object> polFeats = result.getPolicyFeatures().get(policyId);
             if (polFeats != null) all.putAll(polFeats);
         }
-        if (applicantId != null) {
-            Map<String, Object> appFeats = result.getApplicantFeatures().get(applicantId);
+        if (applicantId != null && policyId != null) {
+            Map<String, Object> appFeats = result.getApplicantFeature(policyId, applicantId);
             if (appFeats != null) all.putAll(appFeats);
         }
-        Map<String, Object> insFeats = result.getInsuredFeatures().get(insuredId);
+        Map<String, Object> insFeats = result.getInsuredFeature(policyId, insuredId);
         if (insFeats != null) all.putAll(insFeats);
         return all;
     }
 
-    private Map<String, Object> collectForApplicant(FeatureExtractionResult result, String applicantId) {
+    private Map<String, Object> collectForApplicant(FeatureExtractionResult result,
+                                                     String applicantId, String policyId) {
         Map<String, Object> all = new LinkedHashMap<>();
         all.putAll(result.getOrderFeatures());
-        Map<String, Object> appFeats = result.getApplicantFeatures().get(applicantId);
+        Map<String, Object> appFeats = result.getApplicantFeature(policyId, applicantId);
         if (appFeats != null) all.putAll(appFeats);
         return all;
     }

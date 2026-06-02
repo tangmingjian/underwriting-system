@@ -8,7 +8,10 @@ import org.slf4j.LoggerFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
 
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.function.Supplier;
 
@@ -31,6 +34,22 @@ public class CacheOps {
     }
 
     // ==================== GET ====================
+
+    /**
+     * 仅查缓存，不触发加载和回写。
+     */
+    public <T> Optional<T> getIfPresent(String key, Class<T> type) {
+        try {
+            String json = redis.opsForValue().get(key);
+            if (json != null && !json.isEmpty()) {
+                log.debug("[Cache] hit: {}", key);
+                return Optional.of(objectMapper.readValue(json, type));
+            }
+        } catch (Exception e) {
+            log.warn("[Cache] 反序列化失败 key={}: {}", key, e.getMessage());
+        }
+        return Optional.empty();
+    }
 
     /**
      * 查单个对象：命中返回，未命中调用 loader 加载并回写缓存。
@@ -72,6 +91,62 @@ public class CacheOps {
         List<T> result = loader.get();
         set(key, result, ttl);
         return result;
+    }
+
+    // ==================== MULTI GET ====================
+
+    /**
+     * 批量获取（使用 Redis MGET），返回与 keys 一一对应的 Optional 列表。
+     * 未命中的位置返回 Optional.empty()。
+     */
+    public <T> List<Optional<T>> multiGet(List<String> keys, Class<T> type) {
+        if (keys == null || keys.isEmpty()) {
+            return List.of();
+        }
+        try {
+            List<String> jsons = redis.opsForValue().multiGet(keys);
+            if (jsons == null) {
+                return keys.stream().map(k -> Optional.<T>empty()).toList();
+            }
+            List<Optional<T>> results = new ArrayList<>();
+            for (int i = 0; i < keys.size(); i++) {
+                String json = jsons.get(i);
+                if (json != null && !json.isEmpty()) {
+                    try {
+                        results.add(Optional.of(objectMapper.readValue(json, type)));
+                    } catch (Exception e) {
+                        log.warn("[Cache] multiGet 反序列化失败 key={}: {}", keys.get(i), e.getMessage());
+                        results.add(Optional.empty());
+                    }
+                } else {
+                    results.add(Optional.empty());
+                }
+            }
+            return results;
+        } catch (Exception e) {
+            log.warn("[Cache] multiGet 失败: {}", e.getMessage());
+            return keys.stream().map(k -> Optional.<T>empty()).toList();
+        }
+    }
+
+    /**
+     * 批量写回（MSET），用于回填缓存。
+     */
+    public <T> void multiSet(Map<String, T> entries, Duration ttl) {
+        if (entries == null || entries.isEmpty()) return;
+        try {
+            Map<String, String> map = new LinkedHashMap<>();
+            for (var entry : entries.entrySet()) {
+                map.put(entry.getKey(), objectMapper.writeValueAsString(entry.getValue()));
+            }
+            redis.opsForValue().multiSet(map);
+            // Redis MSET 不支持直接设置 TTL，逐 key 设置
+            for (String key : entries.keySet()) {
+                redis.expire(key, ttl);
+            }
+        } catch (Exception e) {
+            log.warn("[Cache] multiSet 失败: {}", e.getMessage());
+        }
     }
 
     // ==================== SET / EVICT ====================

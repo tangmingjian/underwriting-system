@@ -7,7 +7,10 @@ import com.insurance.uw.domain.repository.FeatureConfigRepository;
 import com.insurance.uw.infrastructure.cache.CacheOps;
 
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -49,11 +52,37 @@ public class FeatureConfigRepositoryImpl implements FeatureConfigRepository {
         if (featureCodes == null || featureCodes.isEmpty()) {
             return List.of();
         }
-        // 直接查库：按码批量查询与 findAllEnabled 数据差异大，不适合复用全量缓存
-        return mapper.selectList(
-                new LambdaQueryWrapper<FeatureConfig>()
-                        .in(FeatureConfig::getFeatureCode, featureCodes)
-                        .eq(FeatureConfig::getStatus, FeatureStatus.ACTIVE));
+        // 1. Redis MGET 批量获取
+        List<String> keys = featureCodes.stream().map(CacheOps::fcKey).toList();
+        List<Optional<FeatureConfig>> cached = cache.multiGet(keys, FeatureConfig.class);
+
+        // 2. 分离命中 / 未命中
+        List<String> missingCodes = new ArrayList<>();
+        List<FeatureConfig> results = new ArrayList<>();
+        for (int i = 0; i < featureCodes.size(); i++) {
+            Optional<FeatureConfig> opt = cached.get(i);
+            if (opt.isPresent()) {
+                results.add(opt.get());
+            } else {
+                missingCodes.add(featureCodes.get(i));
+            }
+        }
+
+        // 3. 未命中查 DB 并回填
+        if (!missingCodes.isEmpty()) {
+            List<FeatureConfig> dbResults = mapper.selectList(
+                    new LambdaQueryWrapper<FeatureConfig>()
+                            .in(FeatureConfig::getFeatureCode, missingCodes)
+                            .eq(FeatureConfig::getStatus, FeatureStatus.ACTIVE));
+            Map<String, FeatureConfig> toCache = new LinkedHashMap<>();
+            for (FeatureConfig fc : dbResults) {
+                toCache.put(CacheOps.fcKey(fc.getFeatureCode()), fc);
+            }
+            cache.multiSet(toCache, ttl);
+            results.addAll(dbResults);
+        }
+
+        return results;
     }
 
     @Override

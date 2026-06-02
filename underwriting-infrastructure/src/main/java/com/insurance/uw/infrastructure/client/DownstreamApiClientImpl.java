@@ -3,6 +3,7 @@ package com.insurance.uw.infrastructure.client;
 import com.insurance.uw.domain.model.valueobject.ServiceConfig;
 import com.insurance.uw.domain.service.DownstreamApiClient;
 import com.insurance.uw.infrastructure.client.discovery.ServiceDiscoveryRouter;
+import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.*;
@@ -22,10 +23,13 @@ public class DownstreamApiClientImpl implements DownstreamApiClient {
 
     private final RestTemplate restTemplate;
     private final ServiceDiscoveryRouter router;
+    private final CircuitBreaker circuitBreaker;
 
-    public DownstreamApiClientImpl(RestTemplate restTemplate, ServiceDiscoveryRouter router) {
+    public DownstreamApiClientImpl(RestTemplate restTemplate, ServiceDiscoveryRouter router,
+                                    CircuitBreaker circuitBreaker) {
         this.restTemplate = restTemplate;
         this.router = router;
+        this.circuitBreaker = circuitBreaker;
     }
 
     @Override
@@ -61,7 +65,8 @@ public class DownstreamApiClientImpl implements DownstreamApiClient {
         HttpEntity<Map<String, Object>> entity = new HttpEntity<>(request, headers);
 
         log.debug("调用下游接口: {} {} 请求体: {}", method, url, request);
-        ResponseEntity<Map> response = restTemplate.exchange(url, httpMethod, entity, Map.class);
+        ResponseEntity<Map> response = circuitBreaker.executeSupplier(() ->
+                restTemplate.exchange(url, httpMethod, entity, Map.class));
 
         if (response.getBody() != null) {
             return response.getBody();

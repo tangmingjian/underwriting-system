@@ -72,8 +72,8 @@ class RuleApplicationServiceTest {
             FeatureExtractionRequest req = service.buildExtractionRequest(order);
 
             assertThat(req.getFeatureCodes()).containsExactlyInAnyOrder("RISK_SCORE", "AGE");
-            assertThat(req.getFeatureToInsuredIds()).containsKeys("RISK_SCORE", "AGE");
-            assertThat(req.getFeatureToPolicyIds()).containsKeys("RISK_SCORE", "AGE");
+            assertThat(req.getPolicyInsuredFeatureMap()).containsKeys("POL001");
+            assertThat(req.getPolicyApplicantFeatureMap()).containsKeys("POL001");
         }
 
         @Test
@@ -143,8 +143,8 @@ class RuleApplicationServiceTest {
         @Test
         @DisplayName("INSURED 规则 → 对每个被保人评估")
         void insuredRule() {
-            featResult.getInsuredFeatures().put("INS001", Map.of("age", 35));
-            featResult.getInsuredFeatures().put("INS002", Map.of("age", 28));
+            featResult.putInsuredFeature("POL001", "INS001", Map.of("age", 35));
+            featResult.putInsuredFeature("POL001", "INS002", Map.of("age", 28));
 
             UnderwritingRule rule = createRule("R1", "年龄>=30", RuleType.INSURED,
                     "#root['age'] >= 30");
@@ -160,8 +160,8 @@ class RuleApplicationServiceTest {
         @Test
         @DisplayName("INSURED 规则 → 部分通过部分不通过")
         void insuredPartialPass() {
-            featResult.getInsuredFeatures().put("INS001", Map.of("age", 35));
-            featResult.getInsuredFeatures().put("INS002", Map.of("age", 25));
+            featResult.putInsuredFeature("POL001", "INS001", Map.of("age", 35));
+            featResult.putInsuredFeature("POL001", "INS002", Map.of("age", 25));
 
             UnderwritingRule rule = createRule("R1", "年龄>=30", RuleType.INSURED,
                     "#root['age'] >= 30");
@@ -179,7 +179,7 @@ class RuleApplicationServiceTest {
         @Test
         @DisplayName("APPLICANT 规则 → 对每个投保人评估")
         void applicantRule() {
-            featResult.getApplicantFeatures().put("APP001", Map.of("credit", 80));
+            featResult.putApplicantFeature("POL001", "APP001", Map.of("credit", 80));
 
             UnderwritingRule rule = createRule("R2", "信用>=70", RuleType.APPLICANT,
                     "#root['credit'] >= 70");
@@ -215,7 +215,7 @@ class RuleApplicationServiceTest {
         void featureOverridesForInsured() {
             featResult.getOrderFeatures().put("channel", "ONLINE");
             featResult.getPolicyFeatures().put("POL001", new HashMap<>(Map.of("channel", "OFFLINE")));
-            featResult.getInsuredFeatures().put("INS001", Map.of("channel", "OFFLINE"));
+            featResult.putInsuredFeature("POL001", "INS001", Map.of("channel", "OFFLINE"));
 
             UnderwritingRule rule = createRule("R_CH", "渠道检查", RuleType.INSURED,
                     "#root['channel'] == 'OFFLINE'");
@@ -231,7 +231,7 @@ class RuleApplicationServiceTest {
         @Test
         @DisplayName("复杂 SpEL 表达式 → 正确评估")
         void complexExpression() {
-            featResult.getInsuredFeatures().put("INS001", Map.of("age", 35, "score", 85));
+            featResult.putInsuredFeature("POL001", "INS001", Map.of("age", 35, "score", 85));
 
             UnderwritingRule rule = createRule("R_COMPLEX", "复合条件",
                     RuleType.INSURED, "#root['age'] > 30 and #root['score'] > 60");

@@ -1,62 +1,612 @@
 {
-  "order": {
-    "id": "ORD_20260601_001",
-    "channel": "ONLINE",
-    "orderTime": "2026-06-01T10:30:00",
-    "policies": [
-      {
-        "id": "POL_001",
-        "product": { "productCode": "HEALTH_A_001", "productName": "健康险A款" },
-        "applicant": {
-          "id": "APP_001", "idNo": "110101199003151234", "name": "张建国",
-          "age": 36, "gender": "M",
-          "customerNos": ["CUST_A_001", "CUST_A_002", "CUST_A_003"]
+  "_description": "api/feature/extract 接口多场景入参报文。支持 9 种 Aggregation×Storage 组合 + 依赖链 + 批处理 + 部分映射",
+  "_note": "FeatureExtractionRequest 只有 4 个字段: order, policyInsuredFeatureMap, policyApplicantFeatureMap, customerNos。featureCodes 由 getFeatureCodes() 从两个 map 自动推导。",
+
+  "scenarios": {
+
+    "scenario-1-simple-order": {
+      "description": "单保单简单订单，覆盖 PARAM_MAPPING 特征：ins.age, ins.gender, ins.occupation, ord.channel, pol.appliedAmount",
+      "request": {
+        "order": {
+          "id": "ORD_20260601_001",
+          "channel": "ONLINE",
+          "orderTime": "2026-06-01T10:30:00",
+          "policies": [
+            {
+              "id": "POL_001",
+              "product": { "productCode": "HEALTH_A_001", "productName": "健康险A款" },
+              "applicant": {
+                "id": "APP_001", "idNo": "110101199003151234", "name": "张建国",
+                "age": 36, "gender": "M",
+                "customerNos": ["CUST_A_001", "CUST_A_002"]
+              },
+              "insureds": [
+                {
+                  "id": "INS_001", "idNo": "110101199003151234", "name": "张建国",
+                  "age": 36, "gender": "M", "occupation": "软件工程师", "phone": "13800001111",
+                  "customerNos": ["CUST_A_001", "CUST_A_002"]
+                }
+              ],
+              "declaredIncome": 300000,
+              "appliedAmount": 1000000
+            }
+          ]
         },
-        "insureds": [
-          {
-            "id": "INS_001", "idNo": "110101199003151234", "name": "张建国",
-            "age": 36, "gender": "M", "occupation": "软件工程师", "phone": "13800001111",
-            "customerNos": ["CUST_A_001", "CUST_A_002", "CUST_A_003"]
-          },
-          {
-            "id": "INS_002", "idNo": "110101199506152345", "name": "李美玲",
-            "age": 31, "gender": "F", "occupation": "医生", "phone": "13800002222",
-            "customerNos": ["CUST_B_001", "CUST_B_002"]
+        "policyInsuredFeatureMap": {
+          "POL_001": {
+            "INS_001": ["ins.age", "ins.gender", "ins.occupation"]
           }
-        ],
-        "declaredIncome": 300000, "appliedAmount": 1000000
-      },
-      {
-        "id": "POL_002",
-        "product": { "productCode": "ACCIDENT_B_002", "productName": "意外险B款" },
-        "applicant": {
-          "id": "APP_002", "idNo": "110101198812016789", "name": "王大明",
-          "age": 38, "gender": "M",
-          "customerNos": ["CUST_C_001"]
         },
-        "insureds": [
-          {
-            "id": "INS_003", "idNo": "110101198812016789", "name": "王大明",
-            "age": 38, "gender": "M", "occupation": "建筑工人", "phone": "13800003333",
-            "customerNos": ["CUST_C_001"]
-          },
-          {
-            "id": "INS_004", "idNo": "110101199210019876", "name": "赵小红",
-            "age": 34, "gender": "F", "occupation": "会计", "phone": "13800004444",
-            "customerNos": ["CUST_D_001", "CUST_D_002"]
+        "policyApplicantFeatureMap": {
+          "POL_001": {
+            "APP_001": ["ord.channel", "pol.appliedAmount"]
           }
-        ],
-        "declaredIncome": 150000, "appliedAmount": 200000
+        }
       }
-    ]
+    },
+
+    "scenario-2-multi-policy-cross-person": {
+      "description": "多保单同人跨保单：INS_001(张建国) 同时出现在 POL_001(健康险) 和 POL_002(意外险)，各自需要不同特征。覆盖 ORDER→INSURED / POLICY→INSURED 路由",
+      "request": {
+        "order": {
+          "id": "ORD_20260602_002",
+          "channel": "ONLINE",
+          "orderTime": "2026-06-02T14:00:00",
+          "policies": [
+            {
+              "id": "POL_001",
+              "product": { "productCode": "HEALTH_A_001", "productName": "健康险A款" },
+              "applicant": {
+                "id": "APP_001", "idNo": "110101199003151234", "name": "张建国",
+                "age": 36, "gender": "M",
+                "customerNos": ["CUST_A_001", "CUST_A_002", "CUST_A_003"]
+              },
+              "insureds": [
+                {
+                  "id": "INS_001", "idNo": "110101199003151234", "name": "张建国",
+                  "age": 36, "gender": "M", "occupation": "软件工程师",
+                  "customerNos": ["CUST_A_001", "CUST_A_002", "CUST_A_003"]
+                },
+                {
+                  "id": "INS_002", "idNo": "110101199506152345", "name": "李美玲",
+                  "age": 31, "gender": "F", "occupation": "医生",
+                  "customerNos": ["CUST_B_001", "CUST_B_002"]
+                }
+              ],
+              "declaredIncome": 300000,
+              "appliedAmount": 1000000
+            },
+            {
+              "id": "POL_002",
+              "product": { "productCode": "ACCIDENT_B_002", "productName": "意外险B款" },
+              "applicant": {
+                "id": "APP_002", "idNo": "110101198812016789", "name": "王大明",
+                "age": 38, "gender": "M",
+                "customerNos": ["CUST_C_001"]
+              },
+              "insureds": [
+                {
+                  "id": "INS_001", "idNo": "110101199003151234", "name": "张建国",
+                  "age": 36, "gender": "M", "occupation": "软件工程师",
+                  "customerNos": ["CUST_A_001", "CUST_A_002", "CUST_A_003"]
+                },
+                {
+                  "id": "INS_003", "idNo": "110101199210019876", "name": "赵小红",
+                  "age": 34, "gender": "F", "occupation": "会计",
+                  "customerNos": ["CUST_D_001", "CUST_D_002"]
+                }
+              ],
+              "declaredIncome": 150000,
+              "appliedAmount": 200000
+            }
+          ]
+        },
+        "policyInsuredFeatureMap": {
+          "POL_001": {
+            "INS_001": ["ins.age", "ins.gender", "ins.creditScore"],
+            "INS_002": ["ins.age", "ins.creditScore"]
+          },
+          "POL_002": {
+            "INS_001": ["ins.occupationRisk", "ins.occupation"],
+            "INS_003": ["ins.occupationRisk", "ins.gender"]
+          }
+        },
+        "policyApplicantFeatureMap": {
+          "POL_001": {
+            "APP_001": ["app.incomeVerified"]
+          },
+          "POL_002": {
+            "APP_002": ["app.incomeVerified"]
+          }
+        }
+      }
+    },
+
+    "scenario-3-all-9-combos": {
+      "description": "覆盖全部 9 种 Aggregation×Storage 有效组合：ORDER→ORDER/POLICY/APPLICANT/INSURED, POLICY→POLICY/APPLICANT/INSURED, APPLICANT→APPLICANT, INSURED→INSURED",
+      "request": {
+        "order": {
+          "id": "ORD_20260603_003",
+          "channel": "AGENT",
+          "orderTime": "2026-06-03T09:00:00",
+          "policies": [
+            {
+              "id": "POL_001",
+              "product": { "productCode": "HEALTH_A_001", "productName": "健康险A款" },
+              "applicant": {
+                "id": "APP_001", "idNo": "110101199003151234", "name": "张建国",
+                "age": 36, "gender": "M",
+                "customerNos": ["CUST_A_001"]
+              },
+              "insureds": [
+                {
+                  "id": "INS_001", "idNo": "110101199003151234", "name": "张建国",
+                  "age": 36, "gender": "M", "occupation": "软件工程师",
+                  "customerNos": ["CUST_A_001"]
+                },
+                {
+                  "id": "INS_002", "idNo": "110101199506152345", "name": "李美玲",
+                  "age": 31, "gender": "F", "occupation": "医生",
+                  "customerNos": ["CUST_B_001"]
+                }
+              ],
+              "declaredIncome": 300000,
+              "appliedAmount": 1000000
+            }
+          ]
+        },
+        "policyInsuredFeatureMap": {
+          "POL_001": {
+            "INS_001": [
+              "ins.creditScore", "ins.occupationRisk", "ins.personalRisk",
+              "ins.age", "ins.gender", "ins.occupation",
+              "BASE_RISK", "RISK_SCORE", "FRAUD_CHECK"
+            ],
+            "INS_002": [
+              "ins.creditScore", "ins.occupationRisk", "ins.personalRisk",
+              "ins.age", "ins.gender",
+              "BASE_RISK", "RISK_SCORE", "FRAUD_CHECK"
+            ]
+          }
+        },
+        "policyApplicantFeatureMap": {
+          "POL_001": {
+            "APP_001": [
+              "ord.fraudRiskScore", "ord.applicantRiskLevel",
+              "app.incomeVerified", "app.creditRating",
+              "pol.maxSumAssured", "pol.appliedAmount",
+              "ord.channel"
+            ]
+          }
+        }
+      }
+    },
+
+    "scenario-4-dependency-chain": {
+      "description": "依赖链执行：BASE_RISK(EXTERNAL_API,无依赖) → RISK_SCORE(dependsOn=BASE_RISK) → FRAUD_CHECK(dependsOn=BASE_RISK)。拓扑排序 2 层",
+      "request": {
+        "order": {
+          "id": "ORD_20260604_004",
+          "channel": "ONLINE",
+          "orderTime": "2026-06-04T11:00:00",
+          "policies": [
+            {
+              "id": "POL_001",
+              "product": { "productCode": "HEALTH_A_001", "productName": "健康险A款" },
+              "applicant": {
+                "id": "APP_001", "idNo": "110101199003151234", "name": "张建国",
+                "age": 36, "gender": "M",
+                "customerNos": ["CUST_A_001", "CUST_A_002"]
+              },
+              "insureds": [
+                {
+                  "id": "INS_001", "idNo": "110101199003151234", "name": "张建国",
+                  "age": 36, "gender": "M", "occupation": "软件工程师",
+                  "customerNos": ["CUST_A_001", "CUST_A_002"]
+                },
+                {
+                  "id": "INS_002", "idNo": "110101199506152345", "name": "李美玲",
+                  "age": 31, "gender": "F", "occupation": "医生",
+                  "customerNos": ["CUST_B_001"]
+                }
+              ],
+              "declaredIncome": 300000,
+              "appliedAmount": 1000000
+            }
+          ]
+        },
+        "policyInsuredFeatureMap": {
+          "POL_001": {
+            "INS_001": ["RISK_SCORE", "FRAUD_CHECK"],
+            "INS_002": ["RISK_SCORE", "FRAUD_CHECK"]
+          }
+        },
+        "policyApplicantFeatureMap": {}
+      }
+    },
+
+    "scenario-5-batch-external-api": {
+      "description": "批处理验证：3 个 EXTERNAL_API 特征(ins.creditScore/ins.occupationRisk/app.incomeVerified) 分别属于不同 serviceKey，各自独立执行。相同 serviceKey 的多特征合并为一次 executeBatch",
+      "request": {
+        "order": {
+          "id": "ORD_20260605_005",
+          "channel": "ONLINE",
+          "orderTime": "2026-06-05T08:00:00",
+          "policies": [
+            {
+              "id": "POL_001",
+              "product": { "productCode": "HEALTH_A_001", "productName": "健康险A款" },
+              "applicant": {
+                "id": "APP_001", "idNo": "110101199003151234", "name": "张建国",
+                "age": 36, "gender": "M",
+                "customerNos": ["CUST_A_001", "CUST_A_002"]
+              },
+              "insureds": [
+                {
+                  "id": "INS_001", "idNo": "110101199003151234", "name": "张建国",
+                  "age": 36, "gender": "M", "occupation": "软件工程师",
+                  "customerNos": ["CUST_A_001", "CUST_A_002"]
+                }
+              ],
+              "declaredIncome": 300000,
+              "appliedAmount": 500000
+            },
+            {
+              "id": "POL_002",
+              "product": { "productCode": "ACCIDENT_B_002", "productName": "意外险B款" },
+              "applicant": {
+                "id": "APP_002", "idNo": "110101198812016789", "name": "王大明",
+                "age": 38, "gender": "M",
+                "customerNos": ["CUST_C_001"]
+              },
+              "insureds": [
+                {
+                  "id": "INS_003", "idNo": "110101198812016789", "name": "王大明",
+                  "age": 38, "gender": "M", "occupation": "建筑工人",
+                  "customerNos": ["CUST_C_001"]
+                }
+              ],
+              "declaredIncome": 150000,
+              "appliedAmount": 200000
+            }
+          ]
+        },
+        "policyInsuredFeatureMap": {
+          "POL_001": {
+            "INS_001": ["ins.creditScore", "ins.occupationRisk", "ord.fraudRiskScore"]
+          },
+          "POL_002": {
+            "INS_003": ["ins.occupationRisk"]
+          }
+        },
+        "policyApplicantFeatureMap": {
+          "POL_001": {
+            "APP_001": ["app.incomeVerified"]
+          },
+          "POL_002": {
+            "APP_002": ["app.incomeVerified"]
+          }
+        }
+      }
+    },
+
+    "scenario-6-partial-mapping": {
+      "description": "部分映射：POL_001 下 INS_001 只需要 [ins.age, ins.creditScore]，INS_002 只需要 [ins.gender]。INS_001 不会执行 ins.gender，INS_002 不会执行 ins.age",
+      "request": {
+        "order": {
+          "id": "ORD_20260606_006",
+          "channel": "ONLINE",
+          "orderTime": "2026-06-06T16:00:00",
+          "policies": [
+            {
+              "id": "POL_001",
+              "product": { "productCode": "HEALTH_A_001", "productName": "健康险A款" },
+              "applicant": {
+                "id": "APP_001", "idNo": "110101199003151234", "name": "张建国",
+                "age": 36, "gender": "M",
+                "customerNos": ["CUST_A_001"]
+              },
+              "insureds": [
+                {
+                  "id": "INS_001", "idNo": "110101199003151234", "name": "张建国",
+                  "age": 36, "gender": "M", "occupation": "软件工程师",
+                  "customerNos": ["CUST_A_001"]
+                },
+                {
+                  "id": "INS_002", "idNo": "110101199506152345", "name": "李美玲",
+                  "age": 31, "gender": "F", "occupation": "医生",
+                  "customerNos": ["CUST_B_001"]
+                },
+                {
+                  "id": "INS_003", "idNo": "110101199210019876", "name": "赵小红",
+                  "age": 34, "gender": "F", "occupation": "会计",
+                  "customerNos": ["CUST_D_001"]
+                }
+              ],
+              "declaredIncome": 300000,
+              "appliedAmount": 1000000
+            }
+          ]
+        },
+        "policyInsuredFeatureMap": {
+          "POL_001": {
+            "INS_001": ["ins.age", "ins.creditScore"],
+            "INS_002": ["ins.gender"],
+            "INS_003": ["ins.occupationRisk", "ins.personalRisk"]
+          }
+        },
+        "policyApplicantFeatureMap": {
+          "POL_001": {
+            "APP_001": ["app.creditRating"]
+          }
+        }
+      }
+    },
+
+    "scenario-7-whole-order-full-features": {
+      "description": "全特征场景：一个订单覆盖 init_data.sql 中所有已配置特征，测试完整链路（特征取数 + 后续规则评估用）",
+      "request": {
+        "order": {
+          "id": "ORD_20260607_007",
+          "channel": "AGENT",
+          "orderTime": "2026-06-07T10:00:00",
+          "policies": [
+            {
+              "id": "POL_001",
+              "product": { "productCode": "HEALTH_A_001", "productName": "健康险A款" },
+              "applicant": {
+                "id": "APP_001", "idNo": "110101199003151234", "name": "张建国",
+                "age": 36, "gender": "M",
+                "customerNos": ["CUST_A_001", "CUST_A_002", "CUST_A_003"]
+              },
+              "insureds": [
+                {
+                  "id": "INS_001", "idNo": "110101199003151234", "name": "张建国",
+                  "age": 36, "gender": "M", "occupation": "软件工程师", "phone": "13800001111",
+                  "customerNos": ["CUST_A_001", "CUST_A_002", "CUST_A_003"]
+                },
+                {
+                  "id": "INS_002", "idNo": "110101199506152345", "name": "李美玲",
+                  "age": 31, "gender": "F", "occupation": "医生", "phone": "13800002222",
+                  "customerNos": ["CUST_B_001", "CUST_B_002"]
+                }
+              ],
+              "declaredIncome": 500000,
+              "appliedAmount": 1000000
+            },
+            {
+              "id": "POL_002",
+              "product": { "productCode": "ACCIDENT_B_002", "productName": "意外险B款" },
+              "applicant": {
+                "id": "APP_002", "idNo": "110101198812016789", "name": "王大明",
+                "age": 38, "gender": "M",
+                "customerNos": ["CUST_C_001"]
+              },
+              "insureds": [
+                {
+                  "id": "INS_003", "idNo": "110101198812016789", "name": "王大明",
+                  "age": 38, "gender": "M", "occupation": "建筑工人", "phone": "13800003333",
+                  "customerNos": ["CUST_C_001"]
+                },
+                {
+                  "id": "INS_004", "idNo": "110101199210019876", "name": "赵小红",
+                  "age": 34, "gender": "F", "occupation": "会计", "phone": "13800004444",
+                  "customerNos": ["CUST_D_001", "CUST_D_002"]
+                }
+              ],
+              "declaredIncome": 150000,
+              "appliedAmount": 200000
+            }
+          ]
+        },
+        "policyInsuredFeatureMap": {
+          "POL_001": {
+            "INS_001": [
+              "ins.creditScore", "ins.occupationRisk", "ins.personalRisk",
+              "ins.age", "ins.gender", "ins.occupation",
+              "BASE_RISK", "RISK_SCORE", "FRAUD_CHECK",
+              "ord.fraudRiskScore"
+            ],
+            "INS_002": [
+              "ins.creditScore", "ins.occupationRisk", "ins.personalRisk",
+              "ins.age", "ins.gender", "ins.occupation",
+              "BASE_RISK", "RISK_SCORE", "FRAUD_CHECK"
+            ]
+          },
+          "POL_002": {
+            "INS_003": [
+              "ins.occupationRisk", "ins.personalRisk",
+              "ins.gender", "ins.occupation",
+              "ord.fraudRiskScore"
+            ],
+            "INS_004": [
+              "ins.occupationRisk", "ins.personalRisk",
+              "ins.gender", "ins.occupation"
+            ]
+          }
+        },
+        "policyApplicantFeatureMap": {
+          "POL_001": {
+            "APP_001": [
+              "app.incomeVerified", "app.creditRating",
+              "ord.applicantRiskLevel", "ord.channel"
+            ]
+          },
+          "POL_002": {
+            "APP_002": [
+              "app.incomeVerified", "app.creditRating",
+              "ord.applicantRiskLevel"
+            ]
+          }
+        },
+        "customerNos": {
+          "INS_001": ["CUST_A_001", "CUST_A_002", "CUST_A_003"],
+          "INS_002": ["CUST_B_001", "CUST_B_002"],
+          "INS_003": ["CUST_C_001"],
+          "INS_004": ["CUST_D_001", "CUST_D_002"],
+          "APP_001": ["CUST_A_001", "CUST_A_002", "CUST_A_003"],
+          "APP_002": ["CUST_C_001"]
+        }
+      }
+    },
+
+    "scenario-8-same-person-customer-nos": {
+      "description": "同人客户号场景：张建国同时是被保人和投保人，拥有多个系统客户号 CUST_A_001~003，下游按 customerNo 返回结果后反查合并",
+      "request": {
+        "order": {
+          "id": "ORD_20260608_008",
+          "channel": "ONLINE",
+          "orderTime": "2026-06-08T09:30:00",
+          "policies": [
+            {
+              "id": "POL_001",
+              "product": { "productCode": "HEALTH_A_001", "productName": "健康险A款" },
+              "applicant": {
+                "id": "APP_001", "idNo": "110101199003151234", "name": "张建国",
+                "age": 36, "gender": "M",
+                "customerNos": ["CUST_A_001", "CUST_A_002", "CUST_A_003"]
+              },
+              "insureds": [
+                {
+                  "id": "INS_001", "idNo": "110101199003151234", "name": "张建国",
+                  "age": 36, "gender": "M", "occupation": "软件工程师",
+                  "customerNos": ["CUST_A_001", "CUST_A_002", "CUST_A_003"]
+                }
+              ],
+              "declaredIncome": 300000,
+              "appliedAmount": 800000
+            }
+          ]
+        },
+        "policyInsuredFeatureMap": {
+          "POL_001": {
+            "INS_001": ["ins.creditScore", "BASE_RISK", "RISK_SCORE", "FRAUD_CHECK"]
+          }
+        },
+        "policyApplicantFeatureMap": {
+          "POL_001": {
+            "APP_001": ["app.incomeVerified", "app.creditRating"]
+          }
+        },
+        "customerNos": {
+          "INS_001": ["CUST_A_001", "CUST_A_002", "CUST_A_003"],
+          "APP_001": ["CUST_A_001", "CUST_A_002", "CUST_A_003"]
+        }
+      }
+    },
+
+    "scenario-9-minimal-extract": {
+      "description": "最简特征取数：仅取 ord.channel + pol.appliedAmount 两个 PARAM_MAPPING，无 EXTERNAL_API 调用",
+      "request": {
+        "order": {
+          "id": "ORD_20260609_009",
+          "channel": "ONLINE",
+          "orderTime": "2026-06-09T12:00:00",
+          "policies": [
+            {
+              "id": "POL_001",
+              "product": { "productCode": "HEALTH_A_001", "productName": "健康险A款" },
+              "applicant": {
+                "id": "APP_001", "idNo": "110101199003151234", "name": "张建国",
+                "age": 36, "gender": "M"
+              },
+              "insureds": [
+                {
+                  "id": "INS_001", "idNo": "110101199003151234", "name": "张建国",
+                  "age": 36, "gender": "M", "occupation": "软件工程师"
+                }
+              ],
+              "appliedAmount": 1000000
+            }
+          ]
+        },
+        "policyInsuredFeatureMap": {},
+        "policyApplicantFeatureMap": {
+          "POL_001": {
+            "APP_001": ["ord.channel", "pol.appliedAmount"]
+          }
+        }
+      }
+    },
+
+    "scenario-10-empty-order": {
+      "description": "空订单（无保单） → 正常返回空结果，不会 NPE",
+      "request": {
+        "order": {
+          "id": "ORD_20260610_010",
+          "channel": "ONLINE",
+          "orderTime": "2026-06-10T08:00:00",
+          "policies": []
+        },
+        "policyInsuredFeatureMap": {},
+        "policyApplicantFeatureMap": {}
+      }
+    },
+
+    "scenario-11-no-feature-codes": {
+      "description": "有订单但 policyInsuredFeatureMap / policyApplicantFeatureMap 均为空 → 跳过取数直接返回空结果",
+      "request": {
+        "order": {
+          "id": "ORD_20260611_011",
+          "channel": "AGENT",
+          "orderTime": "2026-06-11T09:00:00",
+          "policies": [
+            {
+              "id": "POL_001",
+              "product": { "productCode": "HEALTH_A_001", "productName": "健康险A款" },
+              "applicant": {
+                "id": "APP_001", "idNo": "110101199003151234", "name": "张建国",
+                "age": 36, "gender": "M"
+              },
+              "insureds": [
+                {
+                  "id": "INS_001", "idNo": "110101199003151234", "name": "张建国",
+                  "age": 36, "gender": "M", "occupation": "软件工程师"
+                }
+              ],
+              "appliedAmount": 500000
+            }
+          ]
+        },
+        "policyInsuredFeatureMap": {},
+        "policyApplicantFeatureMap": {}
+      }
+    }
   },
-  "featureCodes": ["RISK_SCORE", "FRAUD_CHECK"],
-  "featureToInsuredIds": {
-    "RISK_SCORE": ["INS_001", "INS_002", "INS_003", "INS_004"],
-    "FRAUD_CHECK": ["INS_001", "INS_002", "INS_003", "INS_004"]
-  },
-  "featureToPolicyIds": {
-    "RISK_SCORE": ["POL_001", "POL_002"],
-    "FRAUD_CHECK": ["POL_001", "POL_002"]
+
+  "_features_quick_ref": {
+    "EXTERNAL_API (ORDER聚合)": {
+      "ins.creditScore": { "agg": "ORDER", "storage": "INSURED", "ttl": 300 },
+      "ord.fraudRiskScore": { "agg": "ORDER", "storage": "ORDER", "ttl": 600 },
+      "BASE_RISK": { "agg": "ORDER", "storage": "INSURED", "ttl": 300, "note": "批量查询，RISK_SCORE/FRAUD_CHECK 的上游依赖" }
+    },
+    "EXTERNAL_API (POLICY聚合)": {
+      "ins.occupationRisk": { "agg": "POLICY", "storage": "INSURED", "ttl": 1800 },
+      "app.incomeVerified": { "agg": "POLICY", "storage": "APPLICANT", "ttl": 600 },
+      "pol.maxSumAssured": { "agg": "POLICY", "storage": "POLICY", "ttl": 3600 }
+    },
+    "PARAM_MAPPING (ORDER聚合)": {
+      "pol.appliedAmount": { "agg": "ORDER", "storage": "POLICY", "ttl": -1 },
+      "ord.channel": { "agg": "ORDER", "storage": "ORDER", "ttl": -1 },
+      "ord.applicantRiskLevel": { "agg": "ORDER", "storage": "APPLICANT", "ttl": -1 },
+      "RISK_SCORE": { "agg": "ORDER", "storage": "INSURED", "ttl": -1, "dependsOn": "BASE_RISK" },
+      "FRAUD_CHECK": { "agg": "ORDER", "storage": "INSURED", "ttl": -1, "dependsOn": "BASE_RISK" }
+    },
+    "PARAM_MAPPING (POLICY聚合)": {
+      "ins.age": { "agg": "POLICY", "storage": "INSURED", "ttl": -1 },
+      "ins.gender": { "agg": "POLICY", "storage": "INSURED", "ttl": -1 },
+      "ins.occupation": { "agg": "POLICY", "storage": "INSURED", "ttl": -1 }
+    },
+    "PARAM_MAPPING (APPLICANT聚合)": {
+      "app.creditRating": { "agg": "APPLICANT", "storage": "APPLICANT", "ttl": -1 }
+    },
+    "PARAM_MAPPING (INSURED聚合)": {
+      "ins.personalRisk": { "agg": "INSURED", "storage": "INSURED", "ttl": -1 }
+    },
+    "存储方向约束": {
+      "valid": "rank(storage) <= rank(aggregation): ORDER(3) > POLICY(2) > APPLICANT(1) > INSURED(0)",
+      "APPLICANT→INSURED": "代码显式 NOP",
+      "向上存储(INSURED→ORDER等)": "当前代码尚未硬阻止，由 storeInsuredResults/storeApplicantResults 的向上导航链路实现"
+    }
   }
 }

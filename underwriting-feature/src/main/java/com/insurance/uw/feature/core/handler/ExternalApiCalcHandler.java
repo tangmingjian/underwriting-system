@@ -46,17 +46,15 @@ public class ExternalApiCalcHandler implements FeatureCalcHandler {
             throw new IllegalArgumentException("特征 " + fc.getFeatureCode() + " calc_config.service 未配置");
         }
 
+        Map<String, FeatureScript> localCache = new HashMap<>();
+
         // 1. 加载入参脚本
         String inputScriptId = calcConfig.getInputScriptId();
-        FeatureScript inScript = scriptRepository.findByScriptId(inputScriptId)
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "入参脚本不存在: " + inputScriptId + "（特征: " + fc.getFeatureCode() + "）"));
+        FeatureScript inScript = loadScript(inputScriptId, fc.getFeatureCode(), localCache, "入参脚本");
 
         // 2. 加载出参脚本
         String outputScriptId = calcConfig.getOutputScriptId();
-        FeatureScript outScript = scriptRepository.findByScriptId(outputScriptId)
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "出参脚本不存在: " + outputScriptId + "（特征: " + fc.getFeatureCode() + "）"));
+        FeatureScript outScript = loadScript(outputScriptId, fc.getFeatureCode(), localCache, "出参脚本");
 
         // 3. Groovy buildRequest
         Map<String, Object> request = (Map<String, Object>) groovyEngine.invoke(
@@ -91,24 +89,21 @@ public class ExternalApiCalcHandler implements FeatureCalcHandler {
         // 1. 取第一个特征的 ServiceConfig 用于实际 HTTP 调用
         ServiceConfig serviceConfig = features.get(0).getCalcConfig().getService();
 
-        // 2. 对每个特征加载脚本、拼装请求
+        // 2. 对每个特征加载脚本、拼装请求（请求级本地缓存，避免同 scriptId 重复查 DB/Redis）
         Map<String, Object> mergedRequest = null;
         List<FeatureScript> outputScripts = new ArrayList<>();
+        Map<String, FeatureScript> localCache = new HashMap<>();
 
         for (FeatureConfig fc : features) {
             CalcConfig calcConfig = fc.getCalcConfig();
 
             // 加载入参脚本
             String inputScriptId = calcConfig.getInputScriptId();
-            FeatureScript inScript = scriptRepository.findByScriptId(inputScriptId)
-                    .orElseThrow(() -> new IllegalArgumentException(
-                            "入参脚本不存在: " + inputScriptId + "（特征: " + fc.getFeatureCode() + "）"));
+            FeatureScript inScript = loadScript(inputScriptId, fc.getFeatureCode(), localCache, "入参脚本");
 
             // 加载出参脚本（暂存，稍后逐特征 extractFeatures）
             String outputScriptId = calcConfig.getOutputScriptId();
-            FeatureScript outScript = scriptRepository.findByScriptId(outputScriptId)
-                    .orElseThrow(() -> new IllegalArgumentException(
-                            "出参脚本不存在: " + outputScriptId + "（特征: " + fc.getFeatureCode() + "）"));
+            FeatureScript outScript = loadScript(outputScriptId, fc.getFeatureCode(), localCache, "出参脚本");
             outputScripts.add(outScript);
 
             // Groovy buildRequest
@@ -145,6 +140,17 @@ public class ExternalApiCalcHandler implements FeatureCalcHandler {
         }
 
         return aggregated;
+    }
+
+    /**
+     * 加载脚本，优先从请求级本地缓存命中，避免同请求内重复查 DB/Redis。
+     */
+    private FeatureScript loadScript(String scriptId, String featureCode,
+                                      Map<String, FeatureScript> localCache, String scriptLabel) {
+        return localCache.computeIfAbsent(scriptId, id ->
+                scriptRepository.findByScriptId(id)
+                        .orElseThrow(() -> new IllegalArgumentException(
+                                scriptLabel + "不存在: " + id + "（特征: " + featureCode + "）")));
     }
 
     /**
