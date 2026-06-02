@@ -47,6 +47,10 @@ public class ParamMappingCalcHandler implements FeatureCalcHandler {
             return executeOrderLevel((OrderFeatureContext) ctx, fc, entityType, fieldName);
         } else if (ctx instanceof PolicyFeatureContext) {
             return executePolicyLevel((PolicyFeatureContext) ctx, fc, entityType, fieldName);
+        } else if (ctx instanceof InsuredFeatureContext) {
+            return executeInsuredLevel((InsuredFeatureContext) ctx, fc, entityType, fieldName);
+        } else if (ctx instanceof ApplicantFeatureContext) {
+            return executeApplicantLevel((ApplicantFeatureContext) ctx, fc, entityType, fieldName);
         } else {
             throw new IllegalArgumentException("不支持的上下文类型: " + ctx.getClass().getName());
         }
@@ -62,7 +66,12 @@ public class ParamMappingCalcHandler implements FeatureCalcHandler {
         switch (entityType) {
             case "order": {
                 Object value = readFieldValue(ctx.getOrder(), fieldName);
-                result.put("__ORDER__", Collections.singletonMap(fc.getFeatureCode(), value));
+                Map<String, Object> featureVal = Collections.singletonMap(fc.getFeatureCode(), value);
+                result.put("__ORDER__", featureVal);
+                // 同时按 policyId 写入，支持 ORDER→POLICY/APPLICANT 的向下存储路由
+                for (PolicyFeatureContext polCtx : ctx.getPoliciesForFeature(fc.getFeatureCode())) {
+                    result.put(polCtx.getPolicyId(), featureVal);
+                }
                 break;
             }
             case "policy": {
@@ -167,6 +176,34 @@ public class ParamMappingCalcHandler implements FeatureCalcHandler {
         }
 
         return result;
+    }
+
+    /**
+     * INSURED 级聚合：直接读取当前 Insured 实体字段值。
+     * storeInsuredResults 的 INSURED 分支忽略 entry key，直接写入 insCtx.getAcquiredFeatures()。
+     */
+    private Map<String, Object> executeInsuredLevel(InsuredFeatureContext insCtx, FeatureConfig fc,
+                                                    String entityType, String fieldName) {
+        if (!"insured".equals(entityType)) {
+            throw new IllegalArgumentException(
+                    "INSURED 级特征 " + fc.getFeatureCode() + " 的 source.entityType 必须为 insured，实际: " + entityType);
+        }
+        Object value = readFieldValue(insCtx.getInsured(), fieldName);
+        return Map.of("_self_", Collections.singletonMap(fc.getFeatureCode(), value));
+    }
+
+    /**
+     * APPLICANT 级聚合：直接读取当前 Applicant 实体字段值。
+     * storeApplicantResults 的 APPLICANT 分支忽略 entry key，直接写入 appCtx.getFeatures()。
+     */
+    private Map<String, Object> executeApplicantLevel(ApplicantFeatureContext appCtx, FeatureConfig fc,
+                                                      String entityType, String fieldName) {
+        if (!"applicant".equals(entityType)) {
+            throw new IllegalArgumentException(
+                    "APPLICANT 级特征 " + fc.getFeatureCode() + " 的 source.entityType 必须为 applicant，实际: " + entityType);
+        }
+        Object value = readFieldValue(appCtx.getApplicant(), fieldName);
+        return Map.of("_self_", Collections.singletonMap(fc.getFeatureCode(), value));
     }
 
     /**
