@@ -212,7 +212,7 @@ public class FeatureExtractionServiceImpl implements FeatureExtractionService {
         Map<String, List<String>> groups = groupByServiceKey(featureCodes, configMap);
 
         for (List<String> group : groups.values()) {
-            List<String> applicable = (needed == null || needed.isEmpty())
+            List<String> applicable = (needed == null)
                     ? group : group.stream().filter(needed::contains).toList();
             if (applicable.isEmpty()) {
                 continue;
@@ -252,6 +252,13 @@ public class FeatureExtractionServiceImpl implements FeatureExtractionService {
                                                              Map<String, Map<String, Set<String>>> policyApplicantFeatureMap) {
         Set<String> needed = expandDependencies(
                 collectAllNeeded(policyInsuredFeatureMap, policyApplicantFeatureMap), configMap);
+
+        // 构建依赖传播后的目标映射，注入到 orderCtx 供 handler 按需过滤
+        orderCtx.setFeatureInsuredTargetMap(
+                buildFeatureInsuredTargetMap(policyInsuredFeatureMap, configMap));
+        orderCtx.setFeaturePolicyTargetMap(
+                buildFeaturePolicyTargetMap(policyInsuredFeatureMap, policyApplicantFeatureMap, configMap));
+
         List<CompletableFuture<Void>> futures = new ArrayList<>();
         executeGroups(orderCtx, featureCodes, configMap, needed, futures,
                 (fc, results) -> storeResults(orderCtx, fc, results));
@@ -277,6 +284,118 @@ public class FeatureExtractionServiceImpl implements FeatureExtractionService {
             }
         }
         return directNeeded;
+    }
+
+    /**
+     * 构建特征→被保人目标映射，包含依赖传播。
+     * 从 policyInsuredFeatureMap 出发，迭代将目标沿 dependsOn 反向传播：
+     * 若特征 Y（目标={INS_1, INS_2}）依赖 X，则 X 的目标 ∪= {INS_1, INS_2}。
+     */
+    public Map<String, Set<String>> buildFeatureInsuredTargetMap(
+            Map<String, Map<String, Set<String>>> policyInsuredFeatureMap,
+            Map<String, FeatureConfig> configMap) {
+        Map<String, Set<String>> targetMap = new LinkedHashMap<>();
+        if (policyInsuredFeatureMap == null) {
+            return targetMap;
+        }
+
+        // 初始化：从直接需求填充
+        for (Map<String, Set<String>> byInsured : policyInsuredFeatureMap.values()) {
+            for (Map.Entry<String, Set<String>> e : byInsured.entrySet()) {
+                String insuredId = e.getKey();
+                for (String fc : e.getValue()) {
+                    targetMap.computeIfAbsent(fc, k -> new LinkedHashSet<>()).add(insuredId);
+                }
+            }
+        }
+
+        // 迭代反向传播
+        boolean changed = true;
+        while (changed) {
+            changed = false;
+            // 快照当前 targetMap 的 keySet，避免并发修改
+            Map<String, Set<String>> newTargets = new LinkedHashMap<>();
+            for (Map.Entry<String, Set<String>> entry : targetMap.entrySet()) {
+                String fc = entry.getKey();
+                Set<String> targets = entry.getValue();
+                FeatureConfig cfg = configMap.get(fc);
+                if (cfg != null && cfg.getDependsOn() != null) {
+                    for (String dep : cfg.getDependsOn()) {
+                        Set<String> existing = targetMap.getOrDefault(dep, Set.of());
+                        for (String t : targets) {
+                            if (!existing.contains(t)) {
+                                newTargets.computeIfAbsent(dep, k -> new LinkedHashSet<>()).add(t);
+                                changed = true;
+                            }
+                        }
+                    }
+                }
+            }
+            newTargets.forEach((k, v) -> targetMap.computeIfAbsent(k, key -> new LinkedHashSet<>()).addAll(v));
+        }
+
+        return targetMap;
+    }
+
+    /**
+     * 构建特征→保单目标映射，包含依赖传播。
+     * 从 policyInsuredFeatureMap + policyApplicantFeatureMap 出发，迭代反向传播。
+     */
+    public Map<String, Set<String>> buildFeaturePolicyTargetMap(
+            Map<String, Map<String, Set<String>>> policyInsuredFeatureMap,
+            Map<String, Map<String, Set<String>>> policyApplicantFeatureMap,
+            Map<String, FeatureConfig> configMap) {
+        Map<String, Set<String>> targetMap = new LinkedHashMap<>();
+
+        // 从被保人映射初始化
+        if (policyInsuredFeatureMap != null) {
+            for (Map.Entry<String, Map<String, Set<String>>> entry : policyInsuredFeatureMap.entrySet()) {
+                String policyId = entry.getKey();
+                for (Set<String> fcs : entry.getValue().values()) {
+                    for (String fc : fcs) {
+                        targetMap.computeIfAbsent(fc, k -> new LinkedHashSet<>()).add(policyId);
+                    }
+                }
+            }
+        }
+
+        // 从投保人映射初始化
+        if (policyApplicantFeatureMap != null) {
+            for (Map.Entry<String, Map<String, Set<String>>> entry : policyApplicantFeatureMap.entrySet()) {
+                String policyId = entry.getKey();
+                for (Set<String> fcs : entry.getValue().values()) {
+                    for (String fc : fcs) {
+                        targetMap.computeIfAbsent(fc, k -> new LinkedHashSet<>()).add(policyId);
+                    }
+                }
+            }
+        }
+
+        // 迭代反向传播
+        boolean changed = true;
+        while (changed) {
+            changed = false;
+            Map<String, Set<String>> newTargets = new LinkedHashMap<>();
+            for (Map.Entry<String, Set<String>> entry : targetMap.entrySet()) {
+                String fc = entry.getKey();
+                Set<String> targets = entry.getValue();
+                FeatureConfig cfg = configMap.get(fc);
+                if (cfg != null && cfg.getDependsOn() != null) {
+                    for (String dep : cfg.getDependsOn()) {
+                        Set<String> existing = targetMap.getOrDefault(dep, Set.of());
+                        for (String t : targets) {
+                            if (!existing.contains(t)) {
+                                newTargets.computeIfAbsent(dep, k -> new LinkedHashSet<>()).add(t);
+                                changed = true;
+                            }
+                        }
+                    }
+                }
+            }
+            newTargets.forEach((k, v) -> targetMap.computeIfAbsent(k, key -> new LinkedHashSet<>()).addAll(v));
+        }
+
+        return targetMap;
     }
 
     // ==================== POLICY 级 ====================

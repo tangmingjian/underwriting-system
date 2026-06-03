@@ -12,7 +12,11 @@ import com.insurance.uw.domain.service.FeatureDependencyResolver;
 import com.insurance.uw.domain.service.FeatureResultCache;
 import com.insurance.uw.feature.api.FeatureExtractionRequest;
 import com.insurance.uw.feature.api.FeatureExtractionResult;
+import com.insurance.uw.domain.context.InsuredFeatureContext;
+import com.insurance.uw.domain.context.OrderFeatureContext;
+import com.insurance.uw.domain.context.PolicyFeatureContext;
 import com.insurance.uw.feature.core.handler.FeatureCalcHandler;
+import com.insurance.uw.feature.core.handler.ParamMappingCalcHandler;
 import com.insurance.uw.feature.core.impl.FeatureExtractionServiceImpl;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -875,6 +879,231 @@ class FeatureExtractionServiceImplTest {
             } catch (IllegalStateException e) {
                 assertThat(e.getMessage()).contains("不允许依赖");
             }
+        }
+    }
+
+    // ===================================================================
+    // Nest 7: 按需过滤 — ORDER/POLICY 级按 entity 需要过滤
+    // ===================================================================
+
+    @Nested
+    @DisplayName("Nest 7: 按需过滤 — 避免不必要计算")
+    class DemandFiltering {
+
+        // --- 7.1 buildFeatureInsuredTargetMap 基础 ---
+
+        @Test
+        @DisplayName("7.1 buildFeatureInsuredTargetMap: 直接从 policyInsuredFeatureMap 初始化")
+        void targetMapFromDirectNeeds() {
+            Map<String, Map<String, Set<String>>> insuredMap = Map.of(
+                    "POL001", Map.of(
+                            "INS001", Set.of("featA"),
+                            "INS002", Set.of("featB")));
+
+            Map<String, Set<String>> result = service.buildFeatureInsuredTargetMap(insuredMap, Map.of());
+
+            assertThat(result).containsKeys("featA", "featB");
+            assertThat(result.get("featA")).containsExactly("INS001");
+            assertThat(result.get("featB")).containsExactly("INS002");
+        }
+
+        // --- 7.2 buildFeatureInsuredTargetMap 依赖传播 ---
+
+        @Test
+        @DisplayName("7.2 buildFeatureInsuredTargetMap: featA depends on featB → featB 目标传播")
+        void targetMapPropagatesThroughDependency() {
+            Map<String, Map<String, Set<String>>> insuredMap = Map.of(
+                    "POL001", Map.of("INS001", Set.of("featA")));
+
+            FeatureConfig fcA = createFeatureConfig("featA", CalcType.PARAM_MAPPING,
+                    AggregationLevel.ORDER, StorageLevel.INSURED);
+            fcA.setDependsOn(List.of("featB"));
+            FeatureConfig fcB = createFeatureConfig("featB", CalcType.PARAM_MAPPING,
+                    AggregationLevel.ORDER, StorageLevel.INSURED);
+
+            Map<String, FeatureConfig> configMap = Map.of("featA", fcA, "featB", fcB);
+
+            Map<String, Set<String>> result = service.buildFeatureInsuredTargetMap(insuredMap, configMap);
+
+            // featA has INS001 directly; featB inherits INS001 from featA
+            assertThat(result).containsKeys("featA", "featB");
+            assertThat(result.get("featA")).containsExactly("INS001");
+            assertThat(result.get("featB")).containsExactly("INS001");
+        }
+
+        // --- 7.3 buildFeatureInsuredTargetMap 多层依赖传播 ---
+
+        @Test
+        @DisplayName("7.3 buildFeatureInsuredTargetMap: A→B→C 三层依赖，C 获得 A 的目标")
+        void targetMapThreeLayerPropagation() {
+            Map<String, Map<String, Set<String>>> insuredMap = Map.of(
+                    "POL001", Map.of("INS001", Set.of("featA")));
+
+            FeatureConfig fcA = createFeatureConfig("featA", CalcType.PARAM_MAPPING,
+                    AggregationLevel.ORDER, StorageLevel.INSURED);
+            fcA.setDependsOn(List.of("featB"));
+            FeatureConfig fcB = createFeatureConfig("featB", CalcType.PARAM_MAPPING,
+                    AggregationLevel.ORDER, StorageLevel.INSURED);
+            fcB.setDependsOn(List.of("featC"));
+            FeatureConfig fcC = createFeatureConfig("featC", CalcType.PARAM_MAPPING,
+                    AggregationLevel.ORDER, StorageLevel.INSURED);
+
+            Map<String, FeatureConfig> configMap = Map.of("featA", fcA, "featB", fcB, "featC", fcC);
+
+            Map<String, Set<String>> result = service.buildFeatureInsuredTargetMap(insuredMap, configMap);
+
+            assertThat(result).containsKeys("featA", "featB", "featC");
+            assertThat(result.get("featA")).containsExactly("INS001");
+            assertThat(result.get("featB")).containsExactly("INS001");
+            assertThat(result.get("featC")).containsExactly("INS001");
+        }
+
+        // --- 7.4 OrderFeatureContext.getInsuredsForFeature 使用 targetMap ---
+
+        @Test
+        @DisplayName("7.4 getInsuredsForFeature: 使用 featureInsuredTargetMap 返回匹配的被保人")
+        void orderCtxGetInsuredsForFeatureWithTargetMap() {
+            Order order = createMultiPolicyOrder();
+            OrderFeatureContext ctx = new OrderFeatureContext(order);
+            ctx.setFeatureInsuredTargetMap(Map.of(
+                    "featA", Set.of("INS001"),
+                    "featB", Set.of("INS002", "INS003")));
+
+            List<InsuredFeatureContext> resultA = ctx.getInsuredsForFeature("featA");
+            // INS001 appears in both policies → 2 contexts for the same insured
+            assertThat(resultA).hasSize(2);
+            assertThat(resultA).extracting(InsuredFeatureContext::getInsuredId)
+                    .allMatch(id -> id.equals("INS001"));
+
+            List<InsuredFeatureContext> resultB = ctx.getInsuredsForFeature("featB");
+            assertThat(resultB).hasSize(2);
+            assertThat(resultB).extracting(InsuredFeatureContext::getInsuredId)
+                    .containsExactlyInAnyOrder("INS002", "INS003");
+        }
+
+        // --- 7.5 getInsuredsForFeature 回退到 policyInsuredFeatureMap ---
+
+        @Test
+        @DisplayName("7.5 getInsuredsForFeature: 无 targetMap 时回退到 policyInsuredFeatureMap")
+        void orderCtxFallbackToPolicyInsuredFeatureMap() {
+            Order order = createMultiPolicyOrder();
+            OrderFeatureContext ctx = new OrderFeatureContext(order);
+            ctx.setPolicyInsuredFeatureMap(Map.of(
+                    "POL001", Map.of("INS001", Set.of("featA")),
+                    "POL002", Map.of("INS003", Set.of("featB"))));
+
+            List<InsuredFeatureContext> resultA = ctx.getInsuredsForFeature("featA");
+            // INS001 appears in both POL001 and POL002 → 2 contexts
+            assertThat(resultA).hasSize(2);
+            assertThat(resultA).extracting(InsuredFeatureContext::getInsuredId)
+                    .allMatch(id -> id.equals("INS001"));
+
+            // featC is not in any mapping → fallback to all insureds
+            List<InsuredFeatureContext> resultC = ctx.getInsuredsForFeature("featC");
+            assertThat(resultC).hasSize(4); // INS001 × 2 (cross-policy) + INS002 + INS003
+        }
+
+        // --- 7.6 getPoliciesForFeature 使用 targetMap ---
+
+        @Test
+        @DisplayName("7.6 getPoliciesForFeature: 使用 featurePolicyTargetMap 返回匹配的保单")
+        void orderCtxGetPoliciesForFeatureWithTargetMap() {
+            Order order = createMultiPolicyOrder();
+            OrderFeatureContext ctx = new OrderFeatureContext(order);
+            ctx.setFeaturePolicyTargetMap(Map.of(
+                    "featA", Set.of("POL001"),
+                    "featB", Set.of("POL002")));
+
+            List<PolicyFeatureContext> resultA = ctx.getPoliciesForFeature("featA");
+            assertThat(resultA).hasSize(1);
+            assertThat(resultA.get(0).getPolicyId()).isEqualTo("POL001");
+
+            List<PolicyFeatureContext> resultB = ctx.getPoliciesForFeature("featB");
+            assertThat(resultB).hasSize(1);
+            assertThat(resultB.get(0).getPolicyId()).isEqualTo("POL002");
+        }
+
+        // --- 7.7 PolicyFeatureContext.getInsuredsForFeature ---
+
+        @Test
+        @DisplayName("7.7 PolicyFeatureContext.getInsuredsForFeature: 过滤到当前保单的被保人")
+        void policyCtxGetInsuredsForFeature() {
+            Order order = createMultiPolicyOrder();
+            OrderFeatureContext orderCtx = new OrderFeatureContext(order);
+            // INS001 is in both POL001 and POL002
+            orderCtx.setFeatureInsuredTargetMap(Map.of(
+                    "featA", Set.of("INS001", "INS002")));
+
+            PolicyFeatureContext pol001 = orderCtx.findPolicyCtx("POL001");
+            List<InsuredFeatureContext> result = pol001.getInsuredsForFeature("featA");
+            // POL001 has INS001 and INS002; both match the target map
+            assertThat(result).hasSize(2);
+            assertThat(result).extracting(InsuredFeatureContext::getInsuredId)
+                    .containsExactlyInAnyOrder("INS001", "INS002");
+
+            PolicyFeatureContext pol002 = orderCtx.findPolicyCtx("POL002");
+            List<InsuredFeatureContext> result2 = pol002.getInsuredsForFeature("featA");
+            // POL002 has INS001 and INS003; only INS001 matches
+            assertThat(result2).hasSize(1);
+            assertThat(result2.get(0).getInsuredId()).isEqualTo("INS001");
+        }
+
+        // --- 7.8 POLICY 级 + 真实 ParamMappingCalcHandler: 只计算需要的被保人 ---
+
+        @Test
+        @DisplayName("7.8 POLICY 级 PARAM_MAPPING 只计算需要的被保人")
+        void policyLevelOnlyComputesNeededInsureds() {
+            // 使用真实 ParamMappingCalcHandler 验证 POLICY 级的按需过滤
+            FeatureExtractionServiceImpl svcWithRealHandler = new FeatureExtractionServiceImpl(
+                    featureConfigRepository, executor,
+                    List.of(new ParamMappingCalcHandler(), externalApiHandler),
+                    featureResultCache);
+
+            Order order = createMultiPolicyOrder();
+
+            // featA: POLICY level, INSURED storage, reads insured.occupation
+            FeatureConfig fc = new FeatureConfig();
+            fc.setFeatureCode("ins.occupation");
+            fc.setCalcType(CalcType.PARAM_MAPPING);
+            fc.setAggregation(AggregationLevel.POLICY);
+            fc.setStorageLevel(StorageLevel.INSURED);
+            fc.setStatus(FeatureStatus.ACTIVE);
+            CalcConfig calcConfig = new CalcConfig();
+            calcConfig.setSource("insured.occupation");
+            fc.setCalcConfig(calcConfig);
+
+            when(featureConfigRepository.findByFeatureCodes(any()))
+                    .thenReturn(List.of(fc));
+
+            // POL001: INS001 needs ins.occupation, INS002 does NOT need it
+            Map<String, Map<String, Set<String>>> insuredMap = new LinkedHashMap<>();
+            insuredMap.put("POL001", Map.of("INS001", Set.of("ins.occupation")));
+            // POL002: no one needs ins.occupation
+            insuredMap.put("POL002", Map.of());
+
+            FeatureExtractionRequest req = buildRequestWithMapping(order, insuredMap, Map.of());
+            FeatureExtractionResult result = svcWithRealHandler.extract(req);
+
+            // POL001/INS001 应该得到 occupation（软件工程师）
+            assertThat(result.getInsuredFeatures()).containsKey("POL001");
+            assertThat(result.getInsuredFeatures().get("POL001")).containsKey("INS001");
+            assertThat(result.getInsuredFeatures().get("POL001").get("INS001"))
+                    .containsEntry("ins.occupation", "软件工程师");
+
+            // POL001/INS002 不应该得到 occupation（不在 needed 中）
+            assertThat(result.getInsuredFeatures().get("POL001")).doesNotContainKey("INS002");
+
+            // POL002 不应该有 insuredFeatures（该保单无人需要该特征）
+            assertThat(result.getInsuredFeatures()).doesNotContainKey("POL002");
+        }
+
+        // --- 7.9 buildFeatureInsuredTargetMap 空映射不抛异常 ---
+
+        @Test
+        @DisplayName("7.9 buildFeatureInsuredTargetMap: null 输入返回空 Map 不抛异常")
+        void targetMapNullInputReturnsEmpty() {
+            Map<String, Set<String>> result = service.buildFeatureInsuredTargetMap(null, Map.of());
+            assertThat(result).isEmpty();
         }
     }
 }

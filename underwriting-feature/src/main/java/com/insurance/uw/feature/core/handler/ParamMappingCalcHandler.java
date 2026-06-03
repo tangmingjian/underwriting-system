@@ -121,7 +121,7 @@ public class ParamMappingCalcHandler implements FeatureCalcHandler {
     }
 
     /**
-     * POLICY 级聚合：遍历 polCtx.getInsureds() 全量（因 POLICY 级本身即是保单范围）。
+     * POLICY 级聚合：通过 getInsuredsForFeature 只处理当前保单下需要该特征的被保人。
      */
     private Map<String, Object> executePolicyLevel(PolicyFeatureContext polCtx, FeatureConfig fc,
                                                    String entityType, String fieldName) {
@@ -142,7 +142,7 @@ public class ParamMappingCalcHandler implements FeatureCalcHandler {
                 break;
             }
             case "insured": {
-                for (InsuredFeatureContext insCtx : polCtx.getInsureds()) {
+                for (InsuredFeatureContext insCtx : polCtx.getInsuredsForFeature(fc.getFeatureCode())) {
                     Object value = readFieldValue(insCtx.getInsured(), fieldName);
                     result.put(insCtx.getInsuredId(), Collections.singletonMap(fc.getFeatureCode(), value));
                 }
@@ -161,7 +161,7 @@ public class ParamMappingCalcHandler implements FeatureCalcHandler {
                 String depFeatureCode = dot > 0 ? fieldName.substring(0, dot) : fieldName;
                 String subPath = dot > 0 ? fieldName.substring(dot + 1) : null;
 
-                for (InsuredFeatureContext insCtx : polCtx.getInsureds()) {
+                for (InsuredFeatureContext insCtx : polCtx.getInsuredsForFeature(fc.getFeatureCode())) {
                     Object depResult = resolveFeatureFromContext(insCtx, depFeatureCode);
                     Object value = subPath != null ? readFieldValue(depResult, subPath) : depResult;
                     result.put(insCtx.getInsuredId(),
