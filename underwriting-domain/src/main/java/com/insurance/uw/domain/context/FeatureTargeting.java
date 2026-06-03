@@ -13,13 +13,18 @@ public class FeatureTargeting {
 
     // ---- Input maps (由调用方 RuleApplicationService 推导，extract 早期注入) ----
 
+    // Map<保单号,Map<被保人客户号,特征列表>>
+    // policy→insured→features
     private Map<String, Map<String, Set<String>>> policyInsuredFeatureMap;
+    // Map<保单号,Map<投保人客户号,特征列表>>
+    // policy→applicant→features
     private Map<String, Map<String, Set<String>>> policyApplicantFeatureMap;
 
     // ---- Derived maps (含依赖传播，在 executeOrderLayer 中构建) ----
 
     private Map<String, Set<String>> featureInsuredTargetMap;
     private Map<String, Set<String>> featurePolicyTargetMap;
+    //feature→insured→policies
     private Map<String, Map<String, Set<String>>> featureInsuredPolicyMap;
 
     public FeatureTargeting() {}
@@ -310,57 +315,129 @@ public class FeatureTargeting {
 
     /**
      * 构建特征→被保人→保单目标映射，包含依赖传播（保留保单维度）。
+     *
+     * <h3>数据结构</h3>
+     * <pre>
+     * Map&lt;featureCode, Map&lt;insuredId, Set&lt;policyId&gt;&gt;&gt;
+     * </pre>
+     * 含义：对于某个特征码和某个被保人，该特征需要写入哪些保单。
+     *
+     * <h3>为什么需要保单维度</h3>
+     * 同一个被保人可能出现在多张保单中，但不同保单需要不同的特征。
+     * 例如 INS001 在 POL001 需要 [creditScore]，在 POL002 只需要 [age]。
+     * 写入时必须精确到 (policyId, insuredId) 对，不能多写也不能漏写。
+     *
+     * <h3>构建过程（两阶段）</h3>
+     * <ol>
+     *   <li><b>输入反转</b>：将 policy→insured→features 反转为 feature→insured→policies</li>
+     *   <li><b>依赖传播</b>：若特征 A 依赖 B，则 A 的所有 (insuredId, policyId) 目标
+     *       也必须加入 B 的目标集合。由于依赖链可能多级（A→B→C），需要循环直到收敛。</li>
+     * </ol>
      */
     private Map<String, Map<String, Set<String>>> buildFeatureInsuredPolicyMap(Map<String, FeatureConfig> configMap) {
+        // 阶段1: 输入反转 policy→insured→features → feature→insured→policies
+        Map<String, Map<String, Set<String>>> result = invertInputMap();
+        if (result.isEmpty()) {
+            return result;
+        }
+        // 阶段2: 沿 dependsOn 链传播目标（保留保单维度）
+        propagateInsuredPolicyTargets(result, configMap);
+        return result;
+    }
+
+    /**
+     * 阶段1：将输入映射 policy→insured→features 反转为 feature→insured→policies。
+     *
+     * <p>输入 {@code policyInsuredFeatureMap}：
+     * <pre>
+     * POL001 → {INS001 → [creditScore], INS002 → [creditScore, age]}
+     * </pre>
+     * 输出：
+     * <pre>
+     * creditScore → {INS001 → [POL001], INS002 → [POL001]}
+     * age         → {INS002 → [POL001]}
+     * </pre>
+     */
+    private Map<String, Map<String, Set<String>>> invertInputMap() {
         Map<String, Map<String, Set<String>>> result = new LinkedHashMap<>();
         if (policyInsuredFeatureMap == null) {
             return result;
         }
-        for (Map.Entry<String, Map<String, Set<String>>> polEntry : policyInsuredFeatureMap.entrySet()) {
+        for (var polEntry : policyInsuredFeatureMap.entrySet()) {
             String policyId = polEntry.getKey();
-            for (Map.Entry<String, Set<String>> insEntry : polEntry.getValue().entrySet()) {
+            for (var insEntry : polEntry.getValue().entrySet()) {
                 String insuredId = insEntry.getKey();
                 for (String fc : insEntry.getValue()) {
                     result.computeIfAbsent(fc, k -> new LinkedHashMap<>())
-                            .computeIfAbsent(insuredId, k2 -> new LinkedHashSet<>())
+                            .computeIfAbsent(insuredId, k -> new LinkedHashSet<>())
                             .add(policyId);
                 }
             }
         }
+        return result;
+    }
+
+    /**
+     * 阶段2：沿 dependsOn 链传播 (insuredId, policyId) 目标（保留保单维度）。
+     *
+     * <h3>传播规则</h3>
+     * 若特征 A 依赖 B，且 (insuredId=I, policyId=P) 需要 A，则同样需要 B。
+     *
+     * <h3>为什么需要循环</h3>
+     * 依赖链可能多级：A→B→C。假设 INS001@POL001 只需要 A：
+     * <pre>
+     * 初始:   A → {INS001: [POL001]}
+     * 第1轮: A→B → B → {INS001: [POL001]}
+     * 第2轮: B→C → C → {INS001: [POL001]}
+     * 第3轮: 无新条目, 收敛退出
+     * </pre>
+     *
+     * @param result  阶段1 的输出，直接在此 Map 上修改
+     * @param configMap 特征配置，用于查找 dependsOn
+     */
+    private void propagateInsuredPolicyTargets(Map<String, Map<String, Set<String>>> result,
+                                                Map<String, FeatureConfig> configMap) {
         boolean changed = true;
         while (changed) {
             changed = false;
+            // 本轮新发现的 (fc → insuredId → [policyIds]) 条目
             Map<String, Map<String, Set<String>>> newEntries = new LinkedHashMap<>();
-            for (Map.Entry<String, Map<String, Set<String>>> fcEntry : result.entrySet()) {
+
+            for (var fcEntry : result.entrySet()) {
                 String fc = fcEntry.getKey();
                 Map<String, Set<String>> insuredPolicyMap = fcEntry.getValue();
                 FeatureConfig cfg = configMap.get(fc);
-                if (cfg != null && cfg.getDependsOn() != null) {
-                    for (String dep : cfg.getDependsOn()) {
-                        Map<String, Set<String>> depMap = result.getOrDefault(dep, Map.of());
-                        for (Map.Entry<String, Set<String>> insEntry : insuredPolicyMap.entrySet()) {
-                            String insuredId = insEntry.getKey();
-                            Set<String> policyIds = insEntry.getValue();
-                            Set<String> existing = depMap.getOrDefault(insuredId, Set.of());
-                            for (String polId : policyIds) {
-                                if (!existing.contains(polId)) {
-                                    newEntries.computeIfAbsent(dep, k -> new LinkedHashMap<>())
-                                            .computeIfAbsent(insuredId, k2 -> new LinkedHashSet<>())
-                                            .add(polId);
-                                    changed = true;
-                                }
+
+                if (cfg == null || cfg.getDependsOn() == null) {
+                    continue;
+                }
+
+                // fc 依赖的每个 dep，都需要继承 fc 的 (insuredId, policyId) 目标
+                for (String dep : cfg.getDependsOn()) {
+                    Map<String, Set<String>> depExisting = result.getOrDefault(dep, Map.of());
+                    for (var insEntry : insuredPolicyMap.entrySet()) {
+                        String insuredId = insEntry.getKey();
+                        Set<String> neededPolicyIds = insEntry.getValue();
+                        Set<String> alreadyHas = depExisting.getOrDefault(insuredId, Set.of());
+                        for (String polId : neededPolicyIds) {
+                            if (!alreadyHas.contains(polId)) {
+                                newEntries.computeIfAbsent(dep, k -> new LinkedHashMap<>())
+                                        .computeIfAbsent(insuredId, k2 -> new LinkedHashSet<>())
+                                        .add(polId);
+                                changed = true;
                             }
                         }
                     }
                 }
             }
+
+            // 将本轮新条目合并到 result，下一轮继续传播
             newEntries.forEach((fc, insMap) -> {
                 Map<String, Set<String>> target = result.computeIfAbsent(fc, k -> new LinkedHashMap<>());
                 insMap.forEach((insId, polIds) ->
                         target.computeIfAbsent(insId, k -> new LinkedHashSet<>()).addAll(polIds));
             });
         }
-        return result;
     }
 
     /**
