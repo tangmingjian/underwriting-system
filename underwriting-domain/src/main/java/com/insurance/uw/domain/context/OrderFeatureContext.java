@@ -125,9 +125,17 @@ public class OrderFeatureContext {
     }
 
     /**
-     * 按特征码返回相关被保人上下文（含 customerNos）。
-     * 优先使用派生映射（含依赖传播），回退到输入映射。
-     * 若都无匹配 → 回退到 getAllInsuredContexts()。
+     * 按特征码返回相关被保人上下文。
+     *
+     * <h3>两级过滤</h3>
+     * <ol>
+     *   <li><b>被保人维度</b>：通过 {@code featureInsuredTargetMap} 过滤出需要该特征的 insuredId</li>
+     *   <li><b>保单维度</b>：通过 {@code featureInsuredPolicyMap} 进一步过滤，同一被保人在不同保单
+     *       可能需要不同特征。例如 INS001 在 POL001 需要 [creditScore]，在 POL002 不需要，
+     *       则只返回 INS001@POL001，避免对 POL002 下的 INS001Context 做重复计算</li>
+     * </ol>
+     *
+     * <p>优先使用派生映射（含依赖传播），回退到输入映射。若都无匹配 → 回退到 getAllInsuredContexts()。</p>
      */
     public List<InsuredFeatureContext> getInsuredsForFeature(String featureCode) {
         Set<String> matchingIds = featureTargeting != null
@@ -138,7 +146,22 @@ public class OrderFeatureContext {
         }
         return policyContexts.stream()
                 .flatMap(pc -> pc.getInsureds().stream())
-                .filter(ic -> matchingIds.contains(ic.getInsuredId()))
+                .filter(ic -> {
+                    // 第一级：被保人ID 匹配
+                    if (!matchingIds.contains(ic.getInsuredId())) return false;
+                    // 第二级：保单维度精确匹配（同一被保人在不同保单可能需要不同特征）
+                    if (featureTargeting != null) {
+                        Set<String> allowed = featureTargeting.getPolicyIdsForInsuredFeature(
+                                featureCode, ic.getInsuredId());
+                        // allowed=null  → 无映射信息，不过滤
+                        // allowed=empty → 该被保人不需要此特征，过滤掉
+                        // allowed=非空  → 只保留在这些保单中的上下文
+                        if (allowed != null) {
+                            return allowed.contains(ic.getPolicyContext().getPolicyId());
+                        }
+                    }
+                    return true;
+                })
                 .collect(Collectors.toList());
     }
 
