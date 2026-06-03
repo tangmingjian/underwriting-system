@@ -778,10 +778,9 @@ class FeatureExtractionServiceImplTest {
          */
 
         @Test
-        @DisplayName("INSURED→POLICY: storeInsuredResults 通过 getPolicyContext 向上写入 → 当前允许")
+        @DisplayName("INSURED→POLICY: 向上路由不允许，不写入保单特征")
         void insuredToPolicyStoredUpward() {
-            // INSURED 聚合 → POLICY 存储: storeInsuredResults level=POLICY 分支
-            // 执行 insCtx.getPolicyContext().getPolicyFeatures().putAll(featureMap)
+            // INSURED 聚合 → POLICY 存储: 聚合层级比存储层级窄，向上路由被拒绝
             Order order = createSimpleOrder();
             FeatureConfig fc = createFeatureConfig("IRRELEVANT", CalcType.PARAM_MAPPING,
                     AggregationLevel.INSURED, StorageLevel.POLICY);
@@ -794,17 +793,14 @@ class FeatureExtractionServiceImplTest {
             FeatureExtractionResult result = service.extract(
                     buildRequest(order, Set.of("IRRELEVANT")));
 
-            // 当前代码允许 INSURED→POLICY: 特征写入保单级别
-            assertThat(result.getPolicyFeatures()).containsKey("POL001");
-            assertThat(result.getPolicyFeatures().get("POL001"))
-                    .containsEntry("IRRELEVANT", 99);
+            // INSURED→POLICY 向上路由被拒绝: 保单特征为空
+            assertThat(result.getPolicyFeatures()).isEmpty();
         }
 
         @Test
-        @DisplayName("INSURED→ORDER: storeInsuredResults 通过 getOrderContext 向上写入 → 当前允许")
+        @DisplayName("INSURED→ORDER: 向上路由不允许，不写入订单特征")
         void insuredToOrderStoredUpward() {
-            // INSURED 聚合 → ORDER 存储: storeInsuredResults level=ORDER 分支
-            // 执行 insCtx.getOrderContext().getOrderFeatures().putAll(featureMap)
+            // INSURED 聚合 → ORDER 存储: 聚合层级比存储层级窄，向上路由被拒绝
             Order order = createSimpleOrder();
             FeatureConfig fc = createFeatureConfig("INS_TO_ORD", CalcType.PARAM_MAPPING,
                     AggregationLevel.INSURED, StorageLevel.ORDER);
@@ -817,8 +813,8 @@ class FeatureExtractionServiceImplTest {
             FeatureExtractionResult result = service.extract(
                     buildRequest(order, Set.of("INS_TO_ORD")));
 
-            // 当前代码允许 INSURED→ORDER
-            assertThat(result.getOrderFeatures()).containsEntry("INS_TO_ORD", "upward");
+            // INSURED→ORDER 向上路由被拒绝: 订单特征为空
+            assertThat(result.getOrderFeatures()).isEmpty();
         }
 
         @Test

@@ -9,11 +9,32 @@ import java.util.Map;
 
 /**
  * 特征计算处理器 —— 策略接口，每种 CalcType 一个实现。
+ *
+ * <h3>Result Key Convention</h3>
+ * Handler implementations MUST use the following standardized keys in their
+ * result maps to ensure correct routing by {@code FeatureResultDispatcher}:
+ *
+ * <table>
+ *   <tr><th>Key</th><th>Meaning</th><th>Used When</th></tr>
+ *   <tr><td>{@code __ORDER__}</td><td>Order-scoped result</td><td>entityType=order at ORDER/POLICY level</td></tr>
+ *   <tr><td>{@code _self_}</td><td>Self-context (key ignored by store)</td><td>INSURED/APPLICANT level</td></tr>
+ *   <tr><td>{@code {insuredId}}</td><td>Result for specific insured</td><td>entityType=insured at ORDER/POLICY level</td></tr>
+ *   <tr><td>{@code {policyId}}</td><td>Result for specific policy</td><td>entityType=policy/applicant at ORDER level</td></tr>
+ * </table>
  */
 public interface FeatureCalcHandler {
 
     CalcType getSupportedType();
 
+    /**
+     * Execute feature calculation.
+     *
+     * @param ctx computation context (OrderFeatureContext / PolicyFeatureContext /
+     *            InsuredFeatureContext / ApplicantFeatureContext)
+     * @param fc  feature configuration
+     * @return Map&lt;targetKey, featureValue&gt; where targetKey follows the
+     *         {@linkplain FeatureCalcHandler result key convention}
+     */
     Map<String, Object> execute(Object ctx, FeatureConfig fc);
 
     /**

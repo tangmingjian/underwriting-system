@@ -217,9 +217,10 @@ class ParamMappingCalcHandlerTest {
         void applicantEntityType() {
             Map<String, Object> result = handler.execute(orderCtx, fc("applicant.age"));
 
-            assertThat(result).containsKey("APP001");
+            // key = policyId: ORDER 级 applicant 分支用 policyId 作 key，供 dispatcher 查找 PolicyFeatureContext
+            assertThat(result).containsKey("POL001");
             @SuppressWarnings("unchecked")
-            Map<String, Object> featureMap = (Map<String, Object>) result.get("APP001");
+            Map<String, Object> featureMap = (Map<String, Object>) result.get("POL001");
             assertThat(featureMap).containsEntry("TEST_FC", 35);
         }
 
@@ -516,9 +517,10 @@ class ParamMappingCalcHandlerTest {
 
             Map<String, Object> result = handler.execute(ctx, config);
 
-            assertThat(result).containsKey("APP");
+            // key = policyId: ORDER 级 applicant 分支用 policyId 作 key
+            assertThat(result).containsKey("POL");
             @SuppressWarnings("unchecked")
-            Map<String, Object> featureMap = (Map<String, Object>) result.get("APP");
+            Map<String, Object> featureMap = (Map<String, Object>) result.get("POL");
             @SuppressWarnings("unchecked")
             List<String> value = (List<String>) featureMap.get("FC");
             assertThat(value).containsExactly("CN001", "CN002");

@@ -180,6 +180,66 @@ public class FeatureTargeting {
     }
 
     /**
+     * 解析指定特征码的精确目标集合，每个目标为 {@link FeatureTarget}(policyId, entityId, entityType)。
+     *
+     * <p>构建逻辑：</p>
+     * <ol>
+     *   <li>从 {@code featureInsuredPolicyMap} 提取被保人目标：
+     *       对每个 (insuredId → Set&lt;policyId&gt;)，生成 FeatureTarget(policyId, insuredId, INSURED)</li>
+     *   <li>从 {@code featurePolicyTargetMap} + {@code policyApplicantFeatureMap} 提取投保人目标：
+     *       对每个需要该特征的 policyId，查找对应投保人并生成 FeatureTarget(policyId, applicantId, APPLICANT)</li>
+     * </ol>
+     *
+     * <p>返回空集合表示无目标信息 → 调用方可据此决定是否跳过存储。</p>
+     *
+     * @param featureCode 特征码
+     * @return 精确目标集合，可能为空但不会为 null
+     */
+    public Set<FeatureTarget> resolveTargets(String featureCode) {
+        Set<FeatureTarget> targets = new HashSet<>();
+
+        // 被保人目标：featureInsuredPolicyMap → FeatureTarget(policyId, insuredId, INSURED)
+        if (featureInsuredPolicyMap != null) {
+            Map<String, Set<String>> insuredPolicyMap = featureInsuredPolicyMap.get(featureCode);
+            if (insuredPolicyMap != null) {
+                for (var entry : insuredPolicyMap.entrySet()) {
+                    String insuredId = entry.getKey();
+                    for (String policyId : entry.getValue()) {
+                        targets.add(new FeatureTarget(policyId, insuredId, FeatureTarget.EntityType.INSURED));
+                    }
+                }
+            }
+        }
+
+        // 投保人目标：从 featurePolicyTargetMap 获取保单ID集合，再查 policyApplicantFeatureMap
+        if (featurePolicyTargetMap != null) {
+            Set<String> policyIds = featurePolicyTargetMap.get(featureCode);
+            if (policyIds != null && !policyIds.isEmpty() && policyApplicantFeatureMap != null) {
+                for (String policyId : policyIds) {
+                    Map<String, Set<String>> byApplicant = policyApplicantFeatureMap.get(policyId);
+                    if (byApplicant != null) {
+                        for (String applicantId : byApplicant.keySet()) {
+                            targets.add(new FeatureTarget(policyId, applicantId, FeatureTarget.EntityType.APPLICANT));
+                        }
+                    }
+                }
+            }
+        } else if (policyApplicantFeatureMap != null) {
+            // 无 featurePolicyTargetMap 时，直接查输入映射
+            for (var polEntry : policyApplicantFeatureMap.entrySet()) {
+                String policyId = polEntry.getKey();
+                for (var appEntry : polEntry.getValue().entrySet()) {
+                    if (appEntry.getValue().contains(featureCode)) {
+                        targets.add(new FeatureTarget(policyId, appEntry.getKey(), FeatureTarget.EntityType.APPLICANT));
+                    }
+                }
+            }
+        }
+
+        return targets;
+    }
+
+    /**
      * 获取指定保单+投保人需要的特征码集合（从输入映射精确匹配）。
      * 返回 null 表示无映射（不过滤）。
      */
@@ -234,6 +294,27 @@ public class FeatureTargeting {
             }
         }
         return codes;
+    }
+
+    /**
+     * 检查指定特征是否有任何实体目标需要。
+     *
+     * <p>用于 ORDER 层按需过滤：若特征不在任何保单的被保人/投保人映射中，
+     * 则跳过计算以避免无效开销。</p>
+     *
+     * <p>检查路径：先查 getInsuredIdsForFeature（被保人），再查 getPolicyIdsForFeature（保单/投保人）。
+     * 两者均返回 null 或空集合时返回 false。</p>
+     *
+     * @param featureCode 特征码
+     * @return true 表示至少有一个实体需要该特征
+     */
+    public boolean isFeatureTargeted(String featureCode) {
+        Set<String> insuredIds = getInsuredIdsForFeature(featureCode);
+        if (insuredIds != null && !insuredIds.isEmpty()) {
+            return true;
+        }
+        Set<String> policyIds = getPolicyIdsForFeature(featureCode);
+        return policyIds != null && !policyIds.isEmpty();
     }
 
     // ==================== Build methods (moved from FeatureExtractionServiceImpl) ====================

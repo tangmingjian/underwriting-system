@@ -58,7 +58,18 @@ public class ParamMappingCalcHandler implements FeatureCalcHandler {
     }
 
     /**
-     * ORDER 级聚合：利用 getInsuredsForFeature / getPoliciesForFeature 只处理相关实体。
+     * ORDER 级聚合：遍历整个订单树，按 entityType 读取实体字段值。
+     *
+     * <p>利用 getInsuredsForFeature / getPoliciesForFeature 只处理 FeatureTargeting
+     * 中标记的相关实体，避免遍历不需要该特征的数据。</p>
+     *
+     * <p>结果 key 约定（供 FeatureResultDispatcher 路由）：</p>
+     * <ul>
+     *   <li>entityType=order    → key = __ORDER__（同时写入 policyId 副本支持向下路由）</li>
+     *   <li>entityType=policy   → key = policyId</li>
+     *   <li>entityType=insured  → key = insuredId</li>
+     *   <li>entityType=applicant → key = policyId（dispatcher 通过 policyId 查找 PolicyFeatureContext）</li>
+     * </ul>
      */
     private Map<String, Object> executeOrderLevel(OrderFeatureContext ctx, FeatureConfig fc,
                                                   String entityType, String fieldName) {
@@ -66,16 +77,17 @@ public class ParamMappingCalcHandler implements FeatureCalcHandler {
 
         switch (entityType) {
             case "order": {
+                // 读取订单实体字段，同时写入 ORDER_KEY（Order→Order 路由）和 policyId（Order→Policy/Applicant 路由）
                 Object value = readFieldValue(ctx.getOrder(), fieldName);
                 Map<String, Object> featureVal = Collections.singletonMap(fc.getFeatureCode(), value);
                 result.put(FeatureConstants.ORDER_TARGET_KEY, featureVal);
-                // 同时按 policyId 写入，支持 ORDER→POLICY/APPLICANT 的向下存储路由
                 for (PolicyFeatureContext polCtx : ctx.getPoliciesForFeature(fc.getFeatureCode())) {
                     result.put(polCtx.getPolicyId(), featureVal);
                 }
                 break;
             }
             case "policy": {
+                // 遍历需要该特征的保单，读取各自 Policy 实体字段
                 for (PolicyFeatureContext polCtx : ctx.getPoliciesForFeature(fc.getFeatureCode())) {
                     Object value = readFieldValue(polCtx.getPolicy(), fieldName);
                     result.put(polCtx.getPolicyId(), Collections.singletonMap(fc.getFeatureCode(), value));
@@ -83,6 +95,7 @@ public class ParamMappingCalcHandler implements FeatureCalcHandler {
                 break;
             }
             case "insured": {
+                // 遍历需要该特征的被保人，读取各自 Insured 实体字段
                 for (InsuredFeatureContext insCtx : ctx.getInsuredsForFeature(fc.getFeatureCode())) {
                     Object value = readFieldValue(insCtx.getInsured(), fieldName);
                     result.put(insCtx.getInsuredId(), Collections.singletonMap(fc.getFeatureCode(), value));
@@ -90,11 +103,13 @@ public class ParamMappingCalcHandler implements FeatureCalcHandler {
                 break;
             }
             case "applicant": {
+                // 遍历需要该特征的保单，读取 Applicant 实体字段
+                // key = policyId: FeatureResultDispatcher.dispatchOrderToApplicant 通过 policyId 查找 PolicyFeatureContext
                 for (PolicyFeatureContext polCtx : ctx.getPoliciesForFeature(fc.getFeatureCode())) {
                     ApplicantFeatureContext appCtx = polCtx.getApplicantCtx();
                     if (appCtx != null && appCtx.getApplicant() != null) {
                         Object value = readFieldValue(appCtx.getApplicant(), fieldName);
-                        result.put(appCtx.getApplicantId(), Collections.singletonMap(fc.getFeatureCode(), value));
+                        result.put(polCtx.getPolicyId(), Collections.singletonMap(fc.getFeatureCode(), value));
                     }
                 }
                 break;
