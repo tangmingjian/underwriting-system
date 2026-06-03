@@ -1,5 +1,6 @@
 package com.insurance.uw.application.service;
 
+import com.insurance.uw.common.constants.FeatureConstants;
 import com.insurance.uw.common.enums.AggregationLevel;
 import com.insurance.uw.common.enums.CalcType;
 import com.insurance.uw.common.enums.FeatureStatus;
@@ -60,7 +61,8 @@ class FeatureExtractionServiceImplTest {
         when(paramMappingHandler.getSupportedType()).thenReturn(CalcType.PARAM_MAPPING);
         when(externalApiHandler.getSupportedType()).thenReturn(CalcType.EXTERNAL_API);
         service = new FeatureExtractionServiceImpl(
-                featureConfigRepository, executor,
+                featureConfigRepository, new FeatureDependencyResolver(),
+                executor,
                 List.of(paramMappingHandler, externalApiHandler),
                 featureResultCache);
     }
@@ -213,7 +215,7 @@ class FeatureExtractionServiceImplTest {
             when(featureConfigRepository.findByFeatureCodes(any()))
                     .thenReturn(List.of(fc));
             when(paramMappingHandler.execute(any(), eq(fc)))
-                    .thenReturn(Map.of("__ORDER__", Map.of("ord.channel", "ONLINE")));
+                    .thenReturn(Map.of(FeatureConstants.ORDER_TARGET_KEY, Map.of("ord.channel", "ONLINE")));
 
             FeatureExtractionResult result = service.extract(buildRequest(order, Set.of("ord.channel")));
 
@@ -469,7 +471,7 @@ class FeatureExtractionServiceImplTest {
         }
 
         @Test
-        @DisplayName("2.2 ORDER 级 INSURED 存储 + INS_001 跨保单出现 → findInsuredCtx 返回第一个匹配")
+        @DisplayName("2.2 ORDER 级 INSURED 存储 + INS_001 跨保单出现 → 按保单过滤只写入需要的保单")
         void orderLevelInsuredStorageCrossPolicy() {
             Order order = createMultiPolicyOrder();
             FeatureConfig fc = createFeatureConfig("BASE_RISK", CalcType.PARAM_MAPPING,
@@ -477,20 +479,21 @@ class FeatureExtractionServiceImplTest {
 
             when(featureConfigRepository.findByFeatureCodes(any()))
                     .thenReturn(List.of(fc));
-            // storeResults 使用 findInsuredCtx(targetId)，INS_001 出现在 POL_001 和 POL_002
-            // findInsuredCtx 返回第一个匹配 → POL_001 的 INS_001
             when(paramMappingHandler.execute(any(), eq(fc)))
                     .thenReturn(Map.of("INS001", Map.of("riskScore", 680)));
 
+            // Only POL001/INS001 needs BASE_RISK; POL002 also has INS001 but doesn't need it
+            Map<String, Map<String, Set<String>>> insuredMap = Map.of(
+                    "POL001", Map.of("INS001", Set.of("BASE_RISK")),
+                    "POL002", Map.of());
             FeatureExtractionResult result = service.extract(
-                    buildRequest(order, Set.of("BASE_RISK")));
+                    buildRequestWithMapping(order, insuredMap, Map.of()));
 
-            // INS_001 出现在 POL_001 的 insuredFeatures 中
-            assertThat(result.getInsuredFeatures()).containsKey("POL001");
-            assertThat(result.getInsuredFeatures().get("POL001")).containsKey("INS001");
+            // POL001/INS001 gets the feature (mapping says it's needed)
             assertThat(result.getInsuredFeatures().get("POL001").get("INS001"))
                     .containsEntry("riskScore", 680);
-            // POL_002 的 INS_001 不会被写入（findInsuredCtx 只返回第一个匹配）
+            // POL002/INS001 does NOT get the feature (mapping doesn't include it)
+            assertThat(result.getInsuredFeatures()).doesNotContainKey("POL002");
         }
     }
 
@@ -598,8 +601,8 @@ class FeatureExtractionServiceImplTest {
                     .thenReturn(List.of(fc1, fc2));
 
             Map<String, Map<String, Object>> batchResult = new LinkedHashMap<>();
-            batchResult.put("EXT_A", Map.of("__ORDER__", Map.of("EXT_A", "resultA")));
-            batchResult.put("EXT_B", Map.of("__ORDER__", Map.of("EXT_B", "resultB")));
+            batchResult.put("EXT_A", Map.of(FeatureConstants.ORDER_TARGET_KEY, Map.of("EXT_A", "resultA")));
+            batchResult.put("EXT_B", Map.of(FeatureConstants.ORDER_TARGET_KEY, Map.of("EXT_B", "resultB")));
             when(externalApiHandler.executeBatch(any(), anyList()))
                     .thenReturn(batchResult);
 
@@ -624,7 +627,7 @@ class FeatureExtractionServiceImplTest {
             when(featureConfigRepository.findByFeatureCodes(any()))
                     .thenReturn(List.of(fc));
             when(externalApiHandler.execute(any(), eq(fc)))
-                    .thenReturn(Map.of("__ORDER__", Map.of("EXT_SINGLE", "done")));
+                    .thenReturn(Map.of(FeatureConstants.ORDER_TARGET_KEY, Map.of("EXT_SINGLE", "done")));
 
             FeatureExtractionResult result = service.extract(
                     buildRequest(order, Set.of("EXT_SINGLE")));
@@ -649,9 +652,9 @@ class FeatureExtractionServiceImplTest {
             when(featureConfigRepository.findByFeatureCodes(any()))
                     .thenReturn(List.of(fc1, fc2));
             when(paramMappingHandler.execute(any(), eq(fc1)))
-                    .thenReturn(Map.of("__ORDER__", Map.of("PM_A", 1)));
+                    .thenReturn(Map.of(FeatureConstants.ORDER_TARGET_KEY, Map.of("PM_A", 1)));
             when(paramMappingHandler.execute(any(), eq(fc2)))
-                    .thenReturn(Map.of("__ORDER__", Map.of("PM_B", 2)));
+                    .thenReturn(Map.of(FeatureConstants.ORDER_TARGET_KEY, Map.of("PM_B", 2)));
 
             FeatureExtractionResult result = service.extract(
                     buildRequest(order, Set.of("PM_A", "PM_B")));
@@ -1055,7 +1058,8 @@ class FeatureExtractionServiceImplTest {
         void policyLevelOnlyComputesNeededInsureds() {
             // 使用真实 ParamMappingCalcHandler 验证 POLICY 级的按需过滤
             FeatureExtractionServiceImpl svcWithRealHandler = new FeatureExtractionServiceImpl(
-                    featureConfigRepository, executor,
+                    featureConfigRepository, new FeatureDependencyResolver(),
+                    executor,
                     List.of(new ParamMappingCalcHandler(), externalApiHandler),
                     featureResultCache);
 

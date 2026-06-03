@@ -27,6 +27,10 @@ public class FeatureConfig {
     @TableField("calc_config")
     private String calcConfigJson;
 
+    /** calc_config 解析后的缓存对象（非持久化，避免重复解析 JSON） */
+    @TableField(exist = false)
+    private transient CalcConfig cachedCalcConfig;
+
     private AggregationLevel aggregation;
     private StorageLevel storageLevel;
     private Integer version;
@@ -69,19 +73,27 @@ public class FeatureConfig {
      * 获取 calc_config JSON 原始字符串
      */
     public String getCalcConfigJson() { return calcConfigJson; }
-    public void setCalcConfigJson(String calcConfigJson) { this.calcConfigJson = calcConfigJson; }
-
-    /**
-     * 将 calc_config JSON 解析为强类型对象
-     */
-    public CalcConfig getCalcConfig() {
-        return CalcConfig.fromJson(this.calcConfigJson);
+    public void setCalcConfigJson(String calcConfigJson) {
+        this.cachedCalcConfig = null; // 使缓存失效
+        this.calcConfigJson = calcConfigJson;
     }
 
     /**
-     * 将强类型对象序列化为 calc_config JSON
+     * 将 calc_config JSON 解析为强类型对象（带缓存，避免重复解析）
+     */
+    public CalcConfig getCalcConfig() {
+        if (cachedCalcConfig != null) {
+            return cachedCalcConfig;
+        }
+        cachedCalcConfig = CalcConfig.fromJson(this.calcConfigJson);
+        return cachedCalcConfig;
+    }
+
+    /**
+     * 将强类型对象序列化为 calc_config JSON，并更新缓存
      */
     public void setCalcConfig(CalcConfig calcConfig) {
+        this.cachedCalcConfig = calcConfig;
         this.calcConfigJson = calcConfig != null ? calcConfig.toJson() : null;
     }
 

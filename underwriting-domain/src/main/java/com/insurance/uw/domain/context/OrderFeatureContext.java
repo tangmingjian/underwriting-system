@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.insurance.uw.domain.model.entity.Order;
 
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 /**
@@ -16,7 +17,14 @@ public class OrderFeatureContext {
     @JsonIgnore
     private final Order order;
     private final List<PolicyFeatureContext> policyContexts;
-    private final Map<String, Object> orderFeatures = new HashMap<>();
+    private final Map<String, Object> orderFeatures = new ConcurrentHashMap<>();
+
+    /** 保单ID → 保单上下文索引（O(1) 查找） */
+    @JsonIgnore
+    private final Map<String, PolicyFeatureContext> policyIndex;
+    /** 被保人ID → 被保人上下文列表索引（O(1) 查找，同一被保人可出现在多个保单中） */
+    @JsonIgnore
+    private final Map<String, List<InsuredFeatureContext>> insuredIndex;
 
     /**
      * 由调度器在执行前注入（非持久化，仅当前次核保有效）
@@ -47,11 +55,28 @@ public class OrderFeatureContext {
     @JsonIgnore
     private Map<String, Set<String>> featurePolicyTargetMap;
 
+    /**
+     * 由调度器在执行前注入，包含依赖传播后的目标映射（非持久化）。
+     * 特征码 → 被保人ID → 需要该特征的保单ID集合。
+     * 用于 storeResults 中 INSURED 级别的按保单过滤：同一被保人跨保单出现时，
+     * 只将特征写入真正需要的保单下的被保人上下文。
+     */
+    @JsonIgnore
+    private Map<String, Map<String, Set<String>>> featureInsuredPolicyMap;
+
     public OrderFeatureContext(Order order) {
         this.order = order;
         this.policyContexts = order.getPolicies().stream()
                 .map(p -> new PolicyFeatureContext(p, this))
                 .collect(Collectors.toList());
+        this.policyIndex = new HashMap<>();
+        this.insuredIndex = new HashMap<>();
+        for (PolicyFeatureContext pc : policyContexts) {
+            policyIndex.put(pc.getPolicyId(), pc);
+            for (InsuredFeatureContext ic : pc.getInsureds()) {
+                insuredIndex.computeIfAbsent(ic.getInsuredId(), k -> new ArrayList<>()).add(ic);
+            }
+        }
     }
 
     // ---- 原始对象引用（仅内部使用，不参与序列化） ----
@@ -90,25 +115,58 @@ public class OrderFeatureContext {
         this.featurePolicyTargetMap = featurePolicyTargetMap;
     }
 
+    public Map<String, Map<String, Set<String>>> getFeatureInsuredPolicyMap() {
+        return featureInsuredPolicyMap;
+    }
+
+    public void setFeatureInsuredPolicyMap(Map<String, Map<String, Set<String>>> featureInsuredPolicyMap) {
+        this.featureInsuredPolicyMap = featureInsuredPolicyMap;
+    }
+
     // ---- 便捷查找 ----
 
     /**
-     * 按被保人ID查找对应的被保人上下文
+     * 按被保人ID查找对应的所有被保人上下文（O(1) 索引查找，同一被保人可能出现在多个保单中）
      */
-    public InsuredFeatureContext findInsuredCtx(String insuredId) {
-        return policyContexts.stream()
-                .flatMap(pc -> pc.getInsureds().stream())
-                .filter(ic -> ic.getInsuredId().equals(insuredId))
-                .findFirst().orElse(null);
+    public List<InsuredFeatureContext> findInsuredCtx(String insuredId) {
+        List<InsuredFeatureContext> result = insuredIndex.get(insuredId);
+        return result != null ? result : List.of();
     }
 
     /**
-     * 按保单ID查找保单上下文
+     * 按被保人ID + 特征码查找被保人上下文，只返回保单在 featureInsuredPolicyMap 允许集合中的结果。
+     * 若 featureInsuredPolicyMap 为 null 或无该特征的映射，则回退到不过滤的 findInsuredCtx(insuredId)。
+     */
+    public List<InsuredFeatureContext> findInsuredCtx(String insuredId, String featureCode) {
+        var contexts = findInsuredCtx(insuredId);
+        if (contexts.isEmpty() || featureInsuredPolicyMap == null) return contexts;
+        var insPolMap = featureInsuredPolicyMap.get(featureCode);
+        if (insPolMap == null) return contexts;
+        var allowedPolicies = insPolMap.get(insuredId);
+        if (allowedPolicies == null || allowedPolicies.isEmpty()) return List.of();
+        return contexts.stream()
+                .filter(ic -> allowedPolicies.contains(ic.getPolicyContext().getPolicyId()))
+                .toList();
+    }
+
+    /**
+     * 按保单ID查找保单上下文（O(1) 索引查找）
      */
     public PolicyFeatureContext findPolicyCtx(String policyId) {
-        return policyContexts.stream()
-                .filter(pc -> pc.getPolicyId().equals(policyId))
-                .findFirst().orElse(null);
+        return policyIndex.get(policyId);
+    }
+
+    /**
+     * 按保单ID + 特征码查找保单上下文，若 featurePolicyTargetMap 中该特征不需要此保单则返回 null。
+     */
+    public PolicyFeatureContext findPolicyCtx(String policyId, String featureCode) {
+        if (featurePolicyTargetMap != null) {
+            var targets = featurePolicyTargetMap.get(featureCode);
+            if (targets != null && !targets.isEmpty() && !targets.contains(policyId)) {
+                return null;
+            }
+        }
+        return findPolicyCtx(policyId);
     }
 
     /**

@@ -1,5 +1,6 @@
 package com.insurance.uw.application.service.handler;
 
+import com.insurance.uw.common.constants.FeatureConstants;
 import com.insurance.uw.common.enums.CalcType;
 import com.insurance.uw.domain.context.*;
 import com.insurance.uw.domain.model.entity.*;
@@ -169,9 +170,9 @@ class ParamMappingCalcHandlerTest {
         void orderEntityType() {
             Map<String, Object> result = handler.execute(orderCtx, fc("order.channel"));
 
-            assertThat(result).containsKey("__ORDER__");
+            assertThat(result).containsKey(FeatureConstants.ORDER_TARGET_KEY);
             @SuppressWarnings("unchecked")
-            Map<String, Object> featureMap = (Map<String, Object>) result.get("__ORDER__");
+            Map<String, Object> featureMap = (Map<String, Object>) result.get(FeatureConstants.ORDER_TARGET_KEY);
             assertThat(featureMap).containsEntry("TEST_FC", "ONLINE");
         }
 
@@ -226,9 +227,9 @@ class ParamMappingCalcHandlerTest {
         void orderEntityId() {
             Map<String, Object> result = handler.execute(orderCtx, fc("order.id"));
 
-            assertThat(result).containsKey("__ORDER__");
+            assertThat(result).containsKey(FeatureConstants.ORDER_TARGET_KEY);
             @SuppressWarnings("unchecked")
-            Map<String, Object> featureMap = (Map<String, Object>) result.get("__ORDER__");
+            Map<String, Object> featureMap = (Map<String, Object>) result.get(FeatureConstants.ORDER_TARGET_KEY);
             assertThat(featureMap).containsEntry("TEST_FC", "ORD001");
         }
 
@@ -327,9 +328,9 @@ class ParamMappingCalcHandlerTest {
         void orderEntityType() {
             Map<String, Object> result = handler.execute(polCtx, fc("order.id"));
 
-            assertThat(result).containsKey("__ORDER__");
+            assertThat(result).containsKey(FeatureConstants.ORDER_TARGET_KEY);
             @SuppressWarnings("unchecked")
-            Map<String, Object> featureMap = (Map<String, Object>) result.get("__ORDER__");
+            Map<String, Object> featureMap = (Map<String, Object>) result.get(FeatureConstants.ORDER_TARGET_KEY);
             assertThat(featureMap).containsEntry("TEST_FC", "ORD001");
         }
 

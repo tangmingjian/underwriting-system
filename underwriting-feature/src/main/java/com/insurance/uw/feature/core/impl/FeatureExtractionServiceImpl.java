@@ -41,11 +41,12 @@ public class FeatureExtractionServiceImpl implements FeatureExtractionService {
     private final FeatureResultCache resultCache;
 
     public FeatureExtractionServiceImpl(FeatureConfigRepository featureConfigRepository,
+                                        FeatureDependencyResolver dependencyResolver,
                                         ExecutorService executor,
                                         List<FeatureCalcHandler> handlers,
                                         FeatureResultCache resultCache) {
         this.featureConfigRepository = featureConfigRepository;
-        this.dependencyResolver = new FeatureDependencyResolver();
+        this.dependencyResolver = dependencyResolver;
         this.executor = executor;
         this.calcHandlers = new HashMap<>();
         for (FeatureCalcHandler h : handlers) {
@@ -226,7 +227,15 @@ public class FeatureExtractionServiceImpl implements FeatureExtractionService {
                     for (String fc : applicable) {
                         Map<String, Object> results = batchResults.get(fc);
                         if (results != null) {
-                            storer.accept(configMap.get(fc), results);
+                            FeatureConfig cfg = configMap.get(fc);
+                            storer.accept(cfg, results);
+                            // 批量路径也写入缓存（与 executeOne 保持一致）
+                            Integer ttlSeconds = cfg.getTtlSeconds();
+                            if (ttlSeconds != null && ttlSeconds > 0) {
+                                for (var entry : results.entrySet()) {
+                                    resultCache.put(fc, entry.getKey(), entry.getValue(), ttlSeconds);
+                                }
+                            }
                         }
                     }
                 }, executor));
@@ -258,6 +267,8 @@ public class FeatureExtractionServiceImpl implements FeatureExtractionService {
                 buildFeatureInsuredTargetMap(policyInsuredFeatureMap, configMap));
         orderCtx.setFeaturePolicyTargetMap(
                 buildFeaturePolicyTargetMap(policyInsuredFeatureMap, policyApplicantFeatureMap, configMap));
+        orderCtx.setFeatureInsuredPolicyMap(
+                buildFeatureInsuredPolicyMap(policyInsuredFeatureMap, configMap));
 
         List<CompletableFuture<Void>> futures = new ArrayList<>();
         executeGroups(orderCtx, featureCodes, configMap, needed, futures,
@@ -309,31 +320,7 @@ public class FeatureExtractionServiceImpl implements FeatureExtractionService {
             }
         }
 
-        // 迭代反向传播
-        boolean changed = true;
-        while (changed) {
-            changed = false;
-            // 快照当前 targetMap 的 keySet，避免并发修改
-            Map<String, Set<String>> newTargets = new LinkedHashMap<>();
-            for (Map.Entry<String, Set<String>> entry : targetMap.entrySet()) {
-                String fc = entry.getKey();
-                Set<String> targets = entry.getValue();
-                FeatureConfig cfg = configMap.get(fc);
-                if (cfg != null && cfg.getDependsOn() != null) {
-                    for (String dep : cfg.getDependsOn()) {
-                        Set<String> existing = targetMap.getOrDefault(dep, Set.of());
-                        for (String t : targets) {
-                            if (!existing.contains(t)) {
-                                newTargets.computeIfAbsent(dep, k -> new LinkedHashSet<>()).add(t);
-                                changed = true;
-                            }
-                        }
-                    }
-                }
-            }
-            newTargets.forEach((k, v) -> targetMap.computeIfAbsent(k, key -> new LinkedHashSet<>()).addAll(v));
-        }
-
+        propagateTargets(targetMap, configMap);
         return targetMap;
     }
 
@@ -371,7 +358,81 @@ public class FeatureExtractionServiceImpl implements FeatureExtractionService {
             }
         }
 
-        // 迭代反向传播
+        propagateTargets(targetMap, configMap);
+        return targetMap;
+    }
+
+    /**
+     * 构建特征→被保人→保单目标映射，包含依赖传播（保留保单维度）。
+     * 从 policyInsuredFeatureMap 出发，反向构建 {featureCode → {insuredId → {policyIds}}}，
+     * 并沿 dependsOn 反向传播保单信息。
+     */
+    public Map<String, Map<String, Set<String>>> buildFeatureInsuredPolicyMap(
+            Map<String, Map<String, Set<String>>> policyInsuredFeatureMap,
+            Map<String, FeatureConfig> configMap) {
+        Map<String, Map<String, Set<String>>> result = new LinkedHashMap<>();
+        if (policyInsuredFeatureMap == null) {
+            return result;
+        }
+
+        // 1. Reverse: policyId → insuredId → featureCodes → featureCode → insuredId → policyIds
+        for (var polEntry : policyInsuredFeatureMap.entrySet()) {
+            String policyId = polEntry.getKey();
+            for (var insEntry : polEntry.getValue().entrySet()) {
+                String insuredId = insEntry.getKey();
+                for (String fc : insEntry.getValue()) {
+                    result.computeIfAbsent(fc, k -> new LinkedHashMap<>())
+                            .computeIfAbsent(insuredId, k2 -> new LinkedHashSet<>())
+                            .add(policyId);
+                }
+            }
+        }
+
+        // 2. Propagate dependencies: if B depends on A, and B targets {INS001: [POL001]},
+        //    add [POL001] to A's {INS001} set
+        boolean changed = true;
+        while (changed) {
+            changed = false;
+            Map<String, Map<String, Set<String>>> newEntries = new LinkedHashMap<>();
+            for (var fcEntry : result.entrySet()) {
+                String fc = fcEntry.getKey();
+                Map<String, Set<String>> insuredPolicyMap = fcEntry.getValue();
+                FeatureConfig cfg = configMap.get(fc);
+                if (cfg != null && cfg.getDependsOn() != null) {
+                    for (String dep : cfg.getDependsOn()) {
+                        Map<String, Set<String>> depMap = result.getOrDefault(dep, Map.of());
+                        for (var insEntry : insuredPolicyMap.entrySet()) {
+                            String insuredId = insEntry.getKey();
+                            Set<String> policyIds = insEntry.getValue();
+                            Set<String> existing = depMap.getOrDefault(insuredId, Set.of());
+                            for (String polId : policyIds) {
+                                if (!existing.contains(polId)) {
+                                    newEntries.computeIfAbsent(dep, k -> new LinkedHashMap<>())
+                                            .computeIfAbsent(insuredId, k2 -> new LinkedHashSet<>())
+                                            .add(polId);
+                                    changed = true;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            newEntries.forEach((fc, insMap) -> {
+                Map<String, Set<String>> target = result.computeIfAbsent(fc, k -> new LinkedHashMap<>());
+                insMap.forEach((insId, polIds) ->
+                        target.computeIfAbsent(insId, k -> new LinkedHashSet<>()).addAll(polIds));
+            });
+        }
+
+        return result;
+    }
+
+    /**
+     * 沿 dependsOn 反向传播目标：若特征 Y（目标集合 T）依赖 X，则 X 的目标 ∪= T。
+     * 直接修改传入的 targetMap。
+     */
+    private void propagateTargets(Map<String, Set<String>> targetMap,
+                                  Map<String, FeatureConfig> configMap) {
         boolean changed = true;
         while (changed) {
             changed = false;
@@ -394,8 +455,6 @@ public class FeatureExtractionServiceImpl implements FeatureExtractionService {
             }
             newTargets.forEach((k, v) -> targetMap.computeIfAbsent(k, key -> new LinkedHashSet<>()).addAll(v));
         }
-
-        return targetMap;
     }
 
     // ==================== POLICY 级 ====================
@@ -539,6 +598,16 @@ public class FeatureExtractionServiceImpl implements FeatureExtractionService {
 
     // ==================== 结果存储 ====================
 
+    /**
+     * 将特征值统一转换为 Map 形式：已是 Map 则直接返回，否则包装为 {featureCode: value}。
+     */
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> unwrapFeatureValue(FeatureConfig fc, Object value) {
+        return (value instanceof Map)
+                ? (Map<String, Object>) value
+                : Collections.singletonMap(fc.getFeatureCode(), value);
+    }
+
     @SuppressWarnings("unchecked")
     private void storeResults(OrderFeatureContext ctx, FeatureConfig fc,
                               Map<String, Object> results) {
@@ -548,21 +617,20 @@ public class FeatureExtractionServiceImpl implements FeatureExtractionService {
             String targetId = entry.getKey();
             Object value = entry.getValue();
 
-            Map<String, Object> featureMap = (value instanceof Map)
-                    ? (Map<String, Object>) value
-                    : Collections.singletonMap(fc.getFeatureCode(), value);
+            Map<String, Object> featureMap = unwrapFeatureValue(fc, value);
 
             switch (level) {
                 case INSURED:
-                    var insCtx = ctx.findInsuredCtx(targetId);
-                    if (insCtx != null) insCtx.getAcquiredFeatures().putAll(featureMap);
+                    for (var insCtx : ctx.findInsuredCtx(targetId, fc.getFeatureCode())) {
+                        insCtx.getAcquiredFeatures().putAll(featureMap);
+                    }
                     break;
                 case POLICY:
                     var polCtx = ctx.findPolicyCtx(targetId);
                     if (polCtx != null) polCtx.getPolicyFeatures().putAll(featureMap);
                     break;
                 case APPLICANT:
-                    var pCtx = ctx.findPolicyCtx(targetId);
+                    var pCtx = ctx.findPolicyCtx(targetId, fc.getFeatureCode());
                     if (pCtx != null) pCtx.getApplicantCtx().getFeatures().putAll(featureMap);
                     break;
                 case ORDER:
@@ -581,9 +649,7 @@ public class FeatureExtractionServiceImpl implements FeatureExtractionService {
             String targetId = entry.getKey();
             Object value = entry.getValue();
 
-            Map<String, Object> featureMap = (value instanceof Map)
-                    ? (Map<String, Object>) value
-                    : Collections.singletonMap(fc.getFeatureCode(), value);
+            Map<String, Object> featureMap = unwrapFeatureValue(fc, value);
 
             switch (level) {
                 case INSURED:
@@ -613,9 +679,7 @@ public class FeatureExtractionServiceImpl implements FeatureExtractionService {
         for (Map.Entry<String, Object> entry : results.entrySet()) {
             Object value = entry.getValue();
 
-            Map<String, Object> featureMap = (value instanceof Map)
-                    ? (Map<String, Object>) value
-                    : Collections.singletonMap(fc.getFeatureCode(), value);
+            Map<String, Object> featureMap = unwrapFeatureValue(fc, value);
 
             switch (level) {
                 case INSURED:
@@ -648,9 +712,7 @@ public class FeatureExtractionServiceImpl implements FeatureExtractionService {
         for (Map.Entry<String, Object> entry : results.entrySet()) {
             Object value = entry.getValue();
 
-            Map<String, Object> featureMap = (value instanceof Map)
-                    ? (Map<String, Object>) value
-                    : Collections.singletonMap(fc.getFeatureCode(), value);
+            Map<String, Object> featureMap = unwrapFeatureValue(fc, value);
 
             switch (level) {
                 case APPLICANT:

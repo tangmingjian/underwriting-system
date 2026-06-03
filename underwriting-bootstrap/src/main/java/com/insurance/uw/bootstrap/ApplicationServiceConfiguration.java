@@ -14,6 +14,7 @@ import com.insurance.uw.domain.repository.FeatureConfigRepository;
 import com.insurance.uw.domain.repository.FeatureScriptRepository;
 import com.insurance.uw.domain.repository.UnderwritingRuleRepository;
 import com.insurance.uw.domain.service.DownstreamApiClient;
+import com.insurance.uw.domain.service.FeatureDependencyResolver;
 import com.insurance.uw.domain.service.FeatureResultCache;
 import com.insurance.uw.domain.service.GroovyMappingEngine;
 
@@ -30,12 +31,19 @@ import org.springframework.context.annotation.Configuration;
 public class ApplicationServiceConfiguration {
 
     @Bean
+    public FeatureDependencyResolver featureDependencyResolver() {
+        return new FeatureDependencyResolver();
+    }
+
+    @Bean
     public FeatureExtractionService featureExtractionService(
             FeatureConfigRepository featureConfigRepository,
+            FeatureDependencyResolver featureDependencyResolver,
             ExecutorService featureExecutor,
             List<FeatureCalcHandler> handlers,
             FeatureResultCache featureResultCache) {
-        return new FeatureExtractionServiceImpl(featureConfigRepository, featureExecutor, handlers, featureResultCache);
+        return new FeatureExtractionServiceImpl(featureConfigRepository, featureDependencyResolver,
+                featureExecutor, handlers, featureResultCache);
     }
 
     @Bean

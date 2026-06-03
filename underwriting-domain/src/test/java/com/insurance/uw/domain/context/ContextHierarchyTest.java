@@ -69,15 +69,15 @@ class ContextHierarchyTest {
         @Test
         @DisplayName("findInsuredCtx → 跨保单查找被保人")
         void findInsuredCtx() {
-            InsuredFeatureContext found = orderCtx.findInsuredCtx("INS003");
-            assertThat(found).isNotNull();
-            assertThat(found.getInsuredId()).isEqualTo("INS003");
+            List<InsuredFeatureContext> found = orderCtx.findInsuredCtx("INS003");
+            assertThat(found).hasSize(1);
+            assertThat(found.get(0).getInsuredId()).isEqualTo("INS003");
         }
 
         @Test
-        @DisplayName("findInsuredCtx → 不存在返回 null")
+        @DisplayName("findInsuredCtx → 不存在返回空列表")
         void findInsuredCtxNotFound() {
-            assertThat(orderCtx.findInsuredCtx("NONEXIST")).isNull();
+            assertThat(orderCtx.findInsuredCtx("NONEXIST")).isEmpty();
         }
 
         @Test

@@ -3,9 +3,9 @@ package com.insurance.uw.domain.context;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.insurance.uw.domain.model.entity.Applicant;
 
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 投保人特征上下文 — 持有投保人引用、向上导航、特征结果
@@ -20,7 +20,7 @@ public class ApplicantFeatureContext {
     private final Applicant applicant;
     @JsonIgnore
     private final PolicyFeatureContext parentPolicyCtx;
-    private final Map<String, Object> features = new HashMap<>();
+    private final Map<String, Object> features = new ConcurrentHashMap<>();
 
     public ApplicantFeatureContext(Applicant applicant, PolicyFeatureContext parentPolicyCtx) {
         this.applicant = applicant;

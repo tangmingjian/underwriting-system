@@ -1,5 +1,6 @@
 package com.insurance.uw.application.service;
 
+import com.insurance.uw.common.constants.FeatureConstants;
 import com.insurance.uw.common.enums.AggregationLevel;
 import com.insurance.uw.common.enums.CalcType;
 import com.insurance.uw.common.enums.FeatureStatus;
@@ -7,6 +8,7 @@ import com.insurance.uw.common.enums.StorageLevel;
 import com.insurance.uw.domain.model.entity.*;
 import com.insurance.uw.domain.model.valueobject.CalcConfig;
 import com.insurance.uw.domain.repository.FeatureConfigRepository;
+import com.insurance.uw.domain.service.FeatureDependencyResolver;
 import com.insurance.uw.domain.service.FeatureResultCache;
 import com.insurance.uw.feature.api.FeatureExtractionRequest;
 import com.insurance.uw.feature.api.FeatureExtractionResult;
@@ -51,7 +53,8 @@ class UnderwritingApplicationServiceTest {
         executor = Executors.newFixedThreadPool(2);
         when(mockHandler.getSupportedType()).thenReturn(CalcType.PARAM_MAPPING);
         service = new FeatureExtractionServiceImpl(
-                featureConfigRepository, executor,
+                featureConfigRepository, new FeatureDependencyResolver(),
+                executor,
                 List.of(mockHandler),
                 featureResultCache);
     }
@@ -290,7 +293,7 @@ class UnderwritingApplicationServiceTest {
 
             when(featureConfigRepository.findByFeatureCodes(any())).thenReturn(List.of(fc));
             when(mockHandler.execute(any(), eq(fc)))
-                    .thenReturn(Map.of("__ORDER__", Map.of("AGE", "ONLINE")));
+                    .thenReturn(Map.of(FeatureConstants.ORDER_TARGET_KEY, Map.of("AGE", "ONLINE")));
 
             FeatureExtractionRequest req = buildRequest(order, Set.of("AGE"));
             FeatureExtractionResult result = service.extract(req);
@@ -326,7 +329,7 @@ class UnderwritingApplicationServiceTest {
             when(featureConfigRepository.findByFeatureCodes(any())).thenReturn(List.of(fc));
             if (storageLevel == StorageLevel.ORDER) {
                 when(mockHandler.execute(any(), eq(fc)))
-                        .thenReturn(Map.of("__ORDER__", "ONLINE"));
+                        .thenReturn(Map.of(FeatureConstants.ORDER_TARGET_KEY, "ONLINE"));
             } else {
                 when(mockHandler.execute(any(), eq(fc))).thenReturn(Map.of("INS001", 35));
             }

@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.insurance.uw.domain.model.entity.Policy;
 
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 /**
@@ -19,7 +20,7 @@ public class PolicyFeatureContext {
     private final OrderFeatureContext parentOrderCtx;
     private final ApplicantFeatureContext applicantCtx;
     private final List<InsuredFeatureContext> insuredContexts;
-    private final Map<String, Object> policyFeatures = new HashMap<>();
+    private final Map<String, Object> policyFeatures = new ConcurrentHashMap<>();
 
     public PolicyFeatureContext(Policy policy, OrderFeatureContext parentOrderCtx) {
         this.policy = policy;

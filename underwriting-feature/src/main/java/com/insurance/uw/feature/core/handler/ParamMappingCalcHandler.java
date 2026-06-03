@@ -1,5 +1,6 @@
 package com.insurance.uw.feature.core.handler;
 
+import com.insurance.uw.common.constants.FeatureConstants;
 import com.insurance.uw.common.enums.CalcType;
 import com.insurance.uw.domain.context.ApplicantFeatureContext;
 import com.insurance.uw.domain.context.InsuredFeatureContext;
@@ -67,7 +68,7 @@ public class ParamMappingCalcHandler implements FeatureCalcHandler {
             case "order": {
                 Object value = readFieldValue(ctx.getOrder(), fieldName);
                 Map<String, Object> featureVal = Collections.singletonMap(fc.getFeatureCode(), value);
-                result.put("__ORDER__", featureVal);
+                result.put(FeatureConstants.ORDER_TARGET_KEY, featureVal);
                 // 同时按 policyId 写入，支持 ORDER→POLICY/APPLICANT 的向下存储路由
                 for (PolicyFeatureContext polCtx : ctx.getPoliciesForFeature(fc.getFeatureCode())) {
                     result.put(polCtx.getPolicyId(), featureVal);
@@ -132,7 +133,7 @@ public class ParamMappingCalcHandler implements FeatureCalcHandler {
                 OrderFeatureContext orderCtx = polCtx.getOrderContext();
                 if (orderCtx != null) {
                     Object value = readFieldValue(orderCtx.getOrder(), fieldName);
-                    result.put("__ORDER__", Collections.singletonMap(fc.getFeatureCode(), value));
+                    result.put(FeatureConstants.ORDER_TARGET_KEY, Collections.singletonMap(fc.getFeatureCode(), value));
                 }
                 break;
             }
@@ -189,7 +190,7 @@ public class ParamMappingCalcHandler implements FeatureCalcHandler {
                     "INSURED 级特征 " + fc.getFeatureCode() + " 的 source.entityType 必须为 insured，实际: " + entityType);
         }
         Object value = readFieldValue(insCtx.getInsured(), fieldName);
-        return Map.of("_self_", Collections.singletonMap(fc.getFeatureCode(), value));
+        return Map.of(FeatureConstants.SELF_TARGET_KEY, Collections.singletonMap(fc.getFeatureCode(), value));
     }
 
     /**
@@ -203,7 +204,7 @@ public class ParamMappingCalcHandler implements FeatureCalcHandler {
                     "APPLICANT 级特征 " + fc.getFeatureCode() + " 的 source.entityType 必须为 applicant，实际: " + entityType);
         }
         Object value = readFieldValue(appCtx.getApplicant(), fieldName);
-        return Map.of("_self_", Collections.singletonMap(fc.getFeatureCode(), value));
+        return Map.of(FeatureConstants.SELF_TARGET_KEY, Collections.singletonMap(fc.getFeatureCode(), value));
     }
 
     /**
@@ -263,12 +264,16 @@ public class ParamMappingCalcHandler implements FeatureCalcHandler {
         return GETTER_CACHE
                 .computeIfAbsent(clazz, c -> new ConcurrentHashMap<>())
                 .computeIfAbsent(fieldName, fn -> {
-                    String getterName = "get" + Character.toUpperCase(fn.charAt(0)) + fn.substring(1);
+                    String cap = Character.toUpperCase(fn.charAt(0)) + fn.substring(1);
                     try {
-                        return clazz.getMethod(getterName);
-                    } catch (NoSuchMethodException e) {
-                        throw new IllegalArgumentException(
-                                clazz.getSimpleName() + " 实体无字段: " + fn);
+                        return clazz.getMethod("get" + cap);
+                    } catch (NoSuchMethodException e1) {
+                        try {
+                            return clazz.getMethod("is" + cap);
+                        } catch (NoSuchMethodException e2) {
+                            throw new IllegalArgumentException(
+                                    clazz.getSimpleName() + " 实体无字段: " + fn);
+                        }
                     }
                 });
     }
