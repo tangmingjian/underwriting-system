@@ -64,8 +64,9 @@ public class PolicyFeatureContext {
             return getInsureds();
         }
 
-        // 优先：从 policyInsuredFeatureMap 读取当前保单的精确映射
-        Map<String, Map<String, Set<String>>> policyInsuredMap = parentOrderCtx.getPolicyInsuredFeatureMap();
+        // 优先：从 FeatureTargeting 读取当前保单的精确映射
+        FeatureTargeting ft = parentOrderCtx.getFeatureTargeting();
+        Map<String, Map<String, Set<String>>> policyInsuredMap = ft != null ? ft.getRawInsuredMap() : null;
         if (policyInsuredMap != null) {
             Map<String, Set<String>> byInsured = policyInsuredMap.get(getPolicyId());
             if (byInsured != null) {

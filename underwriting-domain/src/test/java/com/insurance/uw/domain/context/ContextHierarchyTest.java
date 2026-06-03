@@ -106,8 +106,9 @@ class ContextHierarchyTest {
         @Test
         @DisplayName("getInsuredsForFeature → 有 mapping 时按映射过滤")
         void getInsuredsForFeatureWithMapping() {
-            orderCtx.setPolicyInsuredFeatureMap(
-                    Map.of("POL001", Map.of("INS001", Set.of("f1"), "INS002", Set.of("f1"))));
+            FeatureTargeting ft = new FeatureTargeting();
+            ft.setInputMaps(Map.of("POL001", Map.of("INS001", Set.of("f1"), "INS002", Set.of("f1"))), null);
+            orderCtx.setFeatureTargeting(ft);
             List<InsuredFeatureContext> result = orderCtx.getInsuredsForFeature("f1");
 
             assertThat(result).hasSize(2);
@@ -126,8 +127,9 @@ class ContextHierarchyTest {
         @Test
         @DisplayName("getInsuredsForFeature → mapping 中无该特征时回退到全部")
         void getInsuredsForFeatureFallbackOnMissingFeature() {
-            orderCtx.setPolicyInsuredFeatureMap(
-                    Map.of("POL001", Map.of("INS001", Set.of("f1"))));
+            FeatureTargeting ft2 = new FeatureTargeting();
+            ft2.setInputMaps(Map.of("POL001", Map.of("INS001", Set.of("f1"))), null);
+            orderCtx.setFeatureTargeting(ft2);
             List<InsuredFeatureContext> result = orderCtx.getInsuredsForFeature("f2");
 
             assertThat(result).hasSize(3);
@@ -136,8 +138,9 @@ class ContextHierarchyTest {
         @Test
         @DisplayName("getInsuredsForFeature → mapping 值为空集合时回退到全部")
         void getInsuredsForFeatureFallbackOnEmptySet() {
-            orderCtx.setPolicyInsuredFeatureMap(
-                    Map.of("POL001", Map.of("INS001", Set.of())));
+            FeatureTargeting ft3 = new FeatureTargeting();
+            ft3.setInputMaps(Map.of("POL001", Map.of("INS001", Set.of())), null);
+            orderCtx.setFeatureTargeting(ft3);
             List<InsuredFeatureContext> result = orderCtx.getInsuredsForFeature("f1");
 
             assertThat(result).hasSize(3);
@@ -146,8 +149,9 @@ class ContextHierarchyTest {
         @Test
         @DisplayName("getPoliciesForFeature → 有 mapping 时按映射过滤")
         void getPoliciesForFeatureWithMapping() {
-            orderCtx.setPolicyInsuredFeatureMap(
-                    Map.of("POL001", Map.of("INS001", Set.of("f1"))));
+            FeatureTargeting ft4 = new FeatureTargeting();
+            ft4.setInputMaps(Map.of("POL001", Map.of("INS001", Set.of("f1"))), null);
+            orderCtx.setFeatureTargeting(ft4);
             List<PolicyFeatureContext> result = orderCtx.getPoliciesForFeature("f1");
 
             assertThat(result).hasSize(1);

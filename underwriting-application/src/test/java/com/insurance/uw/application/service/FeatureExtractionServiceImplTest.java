@@ -13,6 +13,7 @@ import com.insurance.uw.domain.service.FeatureDependencyResolver;
 import com.insurance.uw.domain.service.FeatureResultCache;
 import com.insurance.uw.feature.api.FeatureExtractionRequest;
 import com.insurance.uw.feature.api.FeatureExtractionResult;
+import com.insurance.uw.domain.context.FeatureTargeting;
 import com.insurance.uw.domain.context.InsuredFeatureContext;
 import com.insurance.uw.domain.context.OrderFeatureContext;
 import com.insurance.uw.domain.context.PolicyFeatureContext;
@@ -903,7 +904,9 @@ class FeatureExtractionServiceImplTest {
                             "INS001", Set.of("featA"),
                             "INS002", Set.of("featB")));
 
-            Map<String, Set<String>> result = service.buildFeatureInsuredTargetMap(insuredMap, Map.of());
+            FeatureTargeting ft = new FeatureTargeting();
+            ft.setInputMaps(insuredMap, null);
+            Map<String, Set<String>> result = ft.buildFeatureInsuredTargetMap(Map.of());
 
             assertThat(result).containsKeys("featA", "featB");
             assertThat(result.get("featA")).containsExactly("INS001");
@@ -926,7 +929,9 @@ class FeatureExtractionServiceImplTest {
 
             Map<String, FeatureConfig> configMap = Map.of("featA", fcA, "featB", fcB);
 
-            Map<String, Set<String>> result = service.buildFeatureInsuredTargetMap(insuredMap, configMap);
+            FeatureTargeting ft2 = new FeatureTargeting();
+            ft2.setInputMaps(insuredMap, null);
+            Map<String, Set<String>> result = ft2.buildFeatureInsuredTargetMap(configMap);
 
             // featA has INS001 directly; featB inherits INS001 from featA
             assertThat(result).containsKeys("featA", "featB");
@@ -953,7 +958,9 @@ class FeatureExtractionServiceImplTest {
 
             Map<String, FeatureConfig> configMap = Map.of("featA", fcA, "featB", fcB, "featC", fcC);
 
-            Map<String, Set<String>> result = service.buildFeatureInsuredTargetMap(insuredMap, configMap);
+            FeatureTargeting ft3 = new FeatureTargeting();
+            ft3.setInputMaps(insuredMap, null);
+            Map<String, Set<String>> result = ft3.buildFeatureInsuredTargetMap(configMap);
 
             assertThat(result).containsKeys("featA", "featB", "featC");
             assertThat(result.get("featA")).containsExactly("INS001");
@@ -968,9 +975,11 @@ class FeatureExtractionServiceImplTest {
         void orderCtxGetInsuredsForFeatureWithTargetMap() {
             Order order = createMultiPolicyOrder();
             OrderFeatureContext ctx = new OrderFeatureContext(order);
-            ctx.setFeatureInsuredTargetMap(Map.of(
+            FeatureTargeting ft = new FeatureTargeting();
+            ft.setFeatureInsuredTargetMap(Map.of(
                     "featA", Set.of("INS001"),
                     "featB", Set.of("INS002", "INS003")));
+            ctx.setFeatureTargeting(ft);
 
             List<InsuredFeatureContext> resultA = ctx.getInsuredsForFeature("featA");
             // INS001 appears in both policies → 2 contexts for the same insured
@@ -991,9 +1000,11 @@ class FeatureExtractionServiceImplTest {
         void orderCtxFallbackToPolicyInsuredFeatureMap() {
             Order order = createMultiPolicyOrder();
             OrderFeatureContext ctx = new OrderFeatureContext(order);
-            ctx.setPolicyInsuredFeatureMap(Map.of(
+            FeatureTargeting ft = new FeatureTargeting();
+            ft.setInputMaps(Map.of(
                     "POL001", Map.of("INS001", Set.of("featA")),
-                    "POL002", Map.of("INS003", Set.of("featB"))));
+                    "POL002", Map.of("INS003", Set.of("featB"))), null);
+            ctx.setFeatureTargeting(ft);
 
             List<InsuredFeatureContext> resultA = ctx.getInsuredsForFeature("featA");
             // INS001 appears in both POL001 and POL002 → 2 contexts
@@ -1013,9 +1024,11 @@ class FeatureExtractionServiceImplTest {
         void orderCtxGetPoliciesForFeatureWithTargetMap() {
             Order order = createMultiPolicyOrder();
             OrderFeatureContext ctx = new OrderFeatureContext(order);
-            ctx.setFeaturePolicyTargetMap(Map.of(
+            FeatureTargeting ft = new FeatureTargeting();
+            ft.setFeaturePolicyTargetMap(Map.of(
                     "featA", Set.of("POL001"),
                     "featB", Set.of("POL002")));
+            ctx.setFeatureTargeting(ft);
 
             List<PolicyFeatureContext> resultA = ctx.getPoliciesForFeature("featA");
             assertThat(resultA).hasSize(1);
@@ -1034,8 +1047,10 @@ class FeatureExtractionServiceImplTest {
             Order order = createMultiPolicyOrder();
             OrderFeatureContext orderCtx = new OrderFeatureContext(order);
             // INS001 is in both POL001 and POL002
-            orderCtx.setFeatureInsuredTargetMap(Map.of(
+            FeatureTargeting ft = new FeatureTargeting();
+            ft.setFeatureInsuredTargetMap(Map.of(
                     "featA", Set.of("INS001", "INS002")));
+            orderCtx.setFeatureTargeting(ft);
 
             PolicyFeatureContext pol001 = orderCtx.findPolicyCtx("POL001");
             List<InsuredFeatureContext> result = pol001.getInsuredsForFeature("featA");
@@ -1106,7 +1121,8 @@ class FeatureExtractionServiceImplTest {
         @Test
         @DisplayName("7.9 buildFeatureInsuredTargetMap: null 输入返回空 Map 不抛异常")
         void targetMapNullInputReturnsEmpty() {
-            Map<String, Set<String>> result = service.buildFeatureInsuredTargetMap(null, Map.of());
+            FeatureTargeting ft9 = new FeatureTargeting();
+            Map<String, Set<String>> result = ft9.buildFeatureInsuredTargetMap(Map.of());
             assertThat(result).isEmpty();
         }
     }

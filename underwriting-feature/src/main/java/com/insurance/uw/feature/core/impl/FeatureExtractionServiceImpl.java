@@ -4,6 +4,7 @@ import com.insurance.uw.common.enums.AggregationLevel;
 import com.insurance.uw.common.enums.CalcType;
 import com.insurance.uw.common.enums.StorageLevel;
 import com.insurance.uw.domain.context.ApplicantFeatureContext;
+import com.insurance.uw.domain.context.FeatureTargeting;
 import com.insurance.uw.domain.context.InsuredFeatureContext;
 import com.insurance.uw.domain.context.OrderFeatureContext;
 import com.insurance.uw.domain.context.PolicyFeatureContext;
@@ -61,12 +62,9 @@ public class FeatureExtractionServiceImpl implements FeatureExtractionService {
         OrderFeatureContext orderCtx = new OrderFeatureContext(order);
 
         // 注入逐保单隔离的特征映射（由调用方 RuleApplicationService 推导）
-        if (request.getPolicyInsuredFeatureMap() != null) {
-            orderCtx.setPolicyInsuredFeatureMap(request.getPolicyInsuredFeatureMap());
-        }
-        if (request.getPolicyApplicantFeatureMap() != null) {
-            orderCtx.setPolicyApplicantFeatureMap(request.getPolicyApplicantFeatureMap());
-        }
+        FeatureTargeting ft = new FeatureTargeting();
+        ft.setInputMaps(request.getPolicyInsuredFeatureMap(), request.getPolicyApplicantFeatureMap());
+        orderCtx.setFeatureTargeting(ft);
 
         Set<String> requestedCodes = request.getFeatureCodes();
         if (requestedCodes == null || requestedCodes.isEmpty()) {
@@ -82,9 +80,7 @@ public class FeatureExtractionServiceImpl implements FeatureExtractionService {
 
         // 按拓扑层级依次执行
         for (Set<String> layer : layers) {
-            executeLayer(orderCtx, layer, configMap,
-                    request.getPolicyInsuredFeatureMap(),
-                    request.getPolicyApplicantFeatureMap());
+            executeLayer(orderCtx, layer, configMap);
         }
 
         return convertToResult(orderCtx);
@@ -148,16 +144,14 @@ public class FeatureExtractionServiceImpl implements FeatureExtractionService {
      */
     private void executeLayer(OrderFeatureContext orderCtx,
                               Set<String> layer,
-                              Map<String, FeatureConfig> configMap,
-                              Map<String, Map<String, Set<String>>> policyInsuredFeatureMap,
-                              Map<String, Map<String, Set<String>>> policyApplicantFeatureMap) {
+                              Map<String, FeatureConfig> configMap) {
         Map<AggregationLevel, List<String>> byAgg = groupByAggregation(layer, configMap);
 
         List<CompletableFuture<Void>> futures = new ArrayList<>();
-        futures.addAll(executeOrderLayer(orderCtx, byAgg.getOrDefault(AggregationLevel.ORDER, List.of()), configMap, policyInsuredFeatureMap, policyApplicantFeatureMap));
-        futures.addAll(executePolicyLayer(orderCtx, byAgg.getOrDefault(AggregationLevel.POLICY, List.of()), configMap, policyInsuredFeatureMap, policyApplicantFeatureMap));
-        futures.addAll(executeInsuredLayer(orderCtx, byAgg.getOrDefault(AggregationLevel.INSURED, List.of()), configMap, policyInsuredFeatureMap));
-        futures.addAll(executeApplicantLayer(orderCtx, byAgg.getOrDefault(AggregationLevel.APPLICANT, List.of()), configMap, policyApplicantFeatureMap));
+        futures.addAll(executeOrderLayer(orderCtx, byAgg.getOrDefault(AggregationLevel.ORDER, List.of()), configMap));
+        futures.addAll(executePolicyLayer(orderCtx, byAgg.getOrDefault(AggregationLevel.POLICY, List.of()), configMap));
+        futures.addAll(executeInsuredLayer(orderCtx, byAgg.getOrDefault(AggregationLevel.INSURED, List.of()), configMap));
+        futures.addAll(executeApplicantLayer(orderCtx, byAgg.getOrDefault(AggregationLevel.APPLICANT, List.of()), configMap));
 
         CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
     }
@@ -256,205 +250,20 @@ public class FeatureExtractionServiceImpl implements FeatureExtractionService {
      */
     private List<CompletableFuture<Void>> executeOrderLayer(OrderFeatureContext orderCtx,
                                                              List<String> featureCodes,
-                                                             Map<String, FeatureConfig> configMap,
-                                                             Map<String, Map<String, Set<String>>> policyInsuredFeatureMap,
-                                                             Map<String, Map<String, Set<String>>> policyApplicantFeatureMap) {
+                                                             Map<String, FeatureConfig> configMap) {
+        FeatureTargeting ft = orderCtx.getFeatureTargeting();
         Set<String> needed = expandDependencies(
-                collectAllNeeded(policyInsuredFeatureMap, policyApplicantFeatureMap), configMap);
+                ft != null ? ft.collectAllFeatureCodes() : Set.of(), configMap);
 
-        // 构建依赖传播后的目标映射，注入到 orderCtx 供 handler 按需过滤
-        orderCtx.setFeatureInsuredTargetMap(
-                buildFeatureInsuredTargetMap(policyInsuredFeatureMap, configMap));
-        orderCtx.setFeaturePolicyTargetMap(
-                buildFeaturePolicyTargetMap(policyInsuredFeatureMap, policyApplicantFeatureMap, configMap));
-        orderCtx.setFeatureInsuredPolicyMap(
-                buildFeatureInsuredPolicyMap(policyInsuredFeatureMap, configMap));
+        // 构建依赖传播后的目标映射
+        if (ft != null) {
+            ft.buildDerivedMaps(configMap);
+        }
 
         List<CompletableFuture<Void>> futures = new ArrayList<>();
         executeGroups(orderCtx, featureCodes, configMap, needed, futures,
-                (fc, results) -> storeResults(orderCtx, fc, results));
+                (fc, results) -> storeOrderResults(orderCtx, fc, results));
         return futures;
-    }
-
-    private static Set<String> collectAllNeeded(
-            Map<String, Map<String, Set<String>>> insuredMap,
-            Map<String, Map<String, Set<String>>> applicantMap) {
-        Set<String> directNeeded = new HashSet<>();
-        if (insuredMap != null) {
-            for (var byInsured : insuredMap.values()) {
-                for (var features : byInsured.values()) {
-                    directNeeded.addAll(features);
-                }
-            }
-        }
-        if (applicantMap != null) {
-            for (var byApplicant : applicantMap.values()) {
-                for (var features : byApplicant.values()) {
-                    directNeeded.addAll(features);
-                }
-            }
-        }
-        return directNeeded;
-    }
-
-    /**
-     * 构建特征→被保人目标映射，包含依赖传播。
-     * 从 policyInsuredFeatureMap 出发，迭代将目标沿 dependsOn 反向传播：
-     * 若特征 Y（目标={INS_1, INS_2}）依赖 X，则 X 的目标 ∪= {INS_1, INS_2}。
-     */
-    public Map<String, Set<String>> buildFeatureInsuredTargetMap(
-            Map<String, Map<String, Set<String>>> policyInsuredFeatureMap,
-            Map<String, FeatureConfig> configMap) {
-        Map<String, Set<String>> targetMap = new LinkedHashMap<>();
-        if (policyInsuredFeatureMap == null) {
-            return targetMap;
-        }
-
-        // 初始化：从直接需求填充
-        for (Map<String, Set<String>> byInsured : policyInsuredFeatureMap.values()) {
-            for (Map.Entry<String, Set<String>> e : byInsured.entrySet()) {
-                String insuredId = e.getKey();
-                for (String fc : e.getValue()) {
-                    targetMap.computeIfAbsent(fc, k -> new LinkedHashSet<>()).add(insuredId);
-                }
-            }
-        }
-
-        propagateTargets(targetMap, configMap);
-        return targetMap;
-    }
-
-    /**
-     * 构建特征→保单目标映射，包含依赖传播。
-     * 从 policyInsuredFeatureMap + policyApplicantFeatureMap 出发，迭代反向传播。
-     */
-    public Map<String, Set<String>> buildFeaturePolicyTargetMap(
-            Map<String, Map<String, Set<String>>> policyInsuredFeatureMap,
-            Map<String, Map<String, Set<String>>> policyApplicantFeatureMap,
-            Map<String, FeatureConfig> configMap) {
-        Map<String, Set<String>> targetMap = new LinkedHashMap<>();
-
-        // 从被保人映射初始化
-        if (policyInsuredFeatureMap != null) {
-            for (Map.Entry<String, Map<String, Set<String>>> entry : policyInsuredFeatureMap.entrySet()) {
-                String policyId = entry.getKey();
-                for (Set<String> fcs : entry.getValue().values()) {
-                    for (String fc : fcs) {
-                        targetMap.computeIfAbsent(fc, k -> new LinkedHashSet<>()).add(policyId);
-                    }
-                }
-            }
-        }
-
-        // 从投保人映射初始化
-        if (policyApplicantFeatureMap != null) {
-            for (Map.Entry<String, Map<String, Set<String>>> entry : policyApplicantFeatureMap.entrySet()) {
-                String policyId = entry.getKey();
-                for (Set<String> fcs : entry.getValue().values()) {
-                    for (String fc : fcs) {
-                        targetMap.computeIfAbsent(fc, k -> new LinkedHashSet<>()).add(policyId);
-                    }
-                }
-            }
-        }
-
-        propagateTargets(targetMap, configMap);
-        return targetMap;
-    }
-
-    /**
-     * 构建特征→被保人→保单目标映射，包含依赖传播（保留保单维度）。
-     * 从 policyInsuredFeatureMap 出发，反向构建 {featureCode → {insuredId → {policyIds}}}，
-     * 并沿 dependsOn 反向传播保单信息。
-     */
-    public Map<String, Map<String, Set<String>>> buildFeatureInsuredPolicyMap(
-            Map<String, Map<String, Set<String>>> policyInsuredFeatureMap,
-            Map<String, FeatureConfig> configMap) {
-        Map<String, Map<String, Set<String>>> result = new LinkedHashMap<>();
-        if (policyInsuredFeatureMap == null) {
-            return result;
-        }
-
-        // 1. Reverse: policyId → insuredId → featureCodes → featureCode → insuredId → policyIds
-        for (var polEntry : policyInsuredFeatureMap.entrySet()) {
-            String policyId = polEntry.getKey();
-            for (var insEntry : polEntry.getValue().entrySet()) {
-                String insuredId = insEntry.getKey();
-                for (String fc : insEntry.getValue()) {
-                    result.computeIfAbsent(fc, k -> new LinkedHashMap<>())
-                            .computeIfAbsent(insuredId, k2 -> new LinkedHashSet<>())
-                            .add(policyId);
-                }
-            }
-        }
-
-        // 2. Propagate dependencies: if B depends on A, and B targets {INS001: [POL001]},
-        //    add [POL001] to A's {INS001} set
-        boolean changed = true;
-        while (changed) {
-            changed = false;
-            Map<String, Map<String, Set<String>>> newEntries = new LinkedHashMap<>();
-            for (var fcEntry : result.entrySet()) {
-                String fc = fcEntry.getKey();
-                Map<String, Set<String>> insuredPolicyMap = fcEntry.getValue();
-                FeatureConfig cfg = configMap.get(fc);
-                if (cfg != null && cfg.getDependsOn() != null) {
-                    for (String dep : cfg.getDependsOn()) {
-                        Map<String, Set<String>> depMap = result.getOrDefault(dep, Map.of());
-                        for (var insEntry : insuredPolicyMap.entrySet()) {
-                            String insuredId = insEntry.getKey();
-                            Set<String> policyIds = insEntry.getValue();
-                            Set<String> existing = depMap.getOrDefault(insuredId, Set.of());
-                            for (String polId : policyIds) {
-                                if (!existing.contains(polId)) {
-                                    newEntries.computeIfAbsent(dep, k -> new LinkedHashMap<>())
-                                            .computeIfAbsent(insuredId, k2 -> new LinkedHashSet<>())
-                                            .add(polId);
-                                    changed = true;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            newEntries.forEach((fc, insMap) -> {
-                Map<String, Set<String>> target = result.computeIfAbsent(fc, k -> new LinkedHashMap<>());
-                insMap.forEach((insId, polIds) ->
-                        target.computeIfAbsent(insId, k -> new LinkedHashSet<>()).addAll(polIds));
-            });
-        }
-
-        return result;
-    }
-
-    /**
-     * 沿 dependsOn 反向传播目标：若特征 Y（目标集合 T）依赖 X，则 X 的目标 ∪= T。
-     * 直接修改传入的 targetMap。
-     */
-    private void propagateTargets(Map<String, Set<String>> targetMap,
-                                  Map<String, FeatureConfig> configMap) {
-        boolean changed = true;
-        while (changed) {
-            changed = false;
-            Map<String, Set<String>> newTargets = new LinkedHashMap<>();
-            for (Map.Entry<String, Set<String>> entry : targetMap.entrySet()) {
-                String fc = entry.getKey();
-                Set<String> targets = entry.getValue();
-                FeatureConfig cfg = configMap.get(fc);
-                if (cfg != null && cfg.getDependsOn() != null) {
-                    for (String dep : cfg.getDependsOn()) {
-                        Set<String> existing = targetMap.getOrDefault(dep, Set.of());
-                        for (String t : targets) {
-                            if (!existing.contains(t)) {
-                                newTargets.computeIfAbsent(dep, k -> new LinkedHashSet<>()).add(t);
-                                changed = true;
-                            }
-                        }
-                    }
-                }
-            }
-            newTargets.forEach((k, v) -> targetMap.computeIfAbsent(k, key -> new LinkedHashSet<>()).addAll(v));
-        }
     }
 
     // ==================== POLICY 级 ====================
@@ -464,33 +273,17 @@ public class FeatureExtractionServiceImpl implements FeatureExtractionService {
      */
     private List<CompletableFuture<Void>> executePolicyLayer(OrderFeatureContext orderCtx,
                                                               List<String> featureCodes,
-                                                              Map<String, FeatureConfig> configMap,
-                                                              Map<String, Map<String, Set<String>>> policyInsuredFeatureMap,
-                                                              Map<String, Map<String, Set<String>>> policyApplicantFeatureMap) {
+                                                              Map<String, FeatureConfig> configMap) {
         List<CompletableFuture<Void>> futures = new ArrayList<>();
+        FeatureTargeting ft = orderCtx.getFeatureTargeting();
         for (PolicyFeatureContext polCtx : orderCtx.getPolicies()) {
             Set<String> needed = expandDependencies(
-                    collectPolicyNeeded(polCtx.getPolicyId(), policyInsuredFeatureMap, policyApplicantFeatureMap),
+                    ft != null ? ft.collectFeatureCodesForPolicy(polCtx.getPolicyId()) : Set.of(),
                     configMap);
             executeGroups(polCtx, featureCodes, configMap, needed, futures,
                     (fc, results) -> storePolicyResults(polCtx, fc, results));
         }
         return futures;
-    }
-
-    private static Set<String> collectPolicyNeeded(String policyId,
-                                                    Map<String, Map<String, Set<String>>> insuredMap,
-                                                    Map<String, Map<String, Set<String>>> applicantMap) {
-        Set<String> directNeeded = new HashSet<>();
-        if (insuredMap != null) {
-            var byInsured = insuredMap.getOrDefault(policyId, Map.of());
-            byInsured.values().forEach(directNeeded::addAll);
-        }
-        if (applicantMap != null) {
-            var byApplicant = applicantMap.getOrDefault(policyId, Map.of());
-            byApplicant.values().forEach(directNeeded::addAll);
-        }
-        return directNeeded;
     }
 
     // ==================== INSURED 级 ====================
@@ -500,14 +293,12 @@ public class FeatureExtractionServiceImpl implements FeatureExtractionService {
      */
     private List<CompletableFuture<Void>> executeInsuredLayer(OrderFeatureContext orderCtx,
                                                                List<String> featureCodes,
-                                                               Map<String, FeatureConfig> configMap,
-                                                               Map<String, Map<String, Set<String>>> policyInsuredFeatureMap) {
+                                                               Map<String, FeatureConfig> configMap) {
         List<CompletableFuture<Void>> futures = new ArrayList<>();
+        FeatureTargeting ft = orderCtx.getFeatureTargeting();
         for (InsuredFeatureContext insCtx : orderCtx.getAllInsuredContexts()) {
-            Set<String> needed = (policyInsuredFeatureMap != null)
-                    ? policyInsuredFeatureMap
-                        .getOrDefault(insCtx.getPolicyContext().getPolicyId(), Map.of())
-                        .getOrDefault(insCtx.getInsuredId(), null)
+            Set<String> needed = ft != null
+                    ? ft.getNeededFeaturesForInsured(insCtx.getPolicyContext().getPolicyId(), insCtx.getInsuredId())
                     : null;
             executeGroups(insCtx, featureCodes, configMap, needed, futures,
                     (fc, results) -> storeInsuredResults(insCtx, fc, results));
@@ -522,18 +313,16 @@ public class FeatureExtractionServiceImpl implements FeatureExtractionService {
      */
     private List<CompletableFuture<Void>> executeApplicantLayer(OrderFeatureContext orderCtx,
                                                                  List<String> featureCodes,
-                                                                 Map<String, FeatureConfig> configMap,
-                                                                 Map<String, Map<String, Set<String>>> policyApplicantFeatureMap) {
+                                                                 Map<String, FeatureConfig> configMap) {
         List<CompletableFuture<Void>> futures = new ArrayList<>();
+        FeatureTargeting ft = orderCtx.getFeatureTargeting();
         for (PolicyFeatureContext polCtx : orderCtx.getPolicies()) {
             ApplicantFeatureContext appCtx = polCtx.getApplicantCtx();
             if (appCtx == null) {
                 continue;
             }
-            Set<String> needed = (policyApplicantFeatureMap != null)
-                    ? policyApplicantFeatureMap
-                        .getOrDefault(polCtx.getPolicyId(), Map.of())
-                        .getOrDefault(appCtx.getApplicantId(), null)
+            Set<String> needed = ft != null
+                    ? ft.getNeededFeaturesForApplicant(polCtx.getPolicyId(), appCtx.getApplicantId())
                     : null;
             executeGroups(appCtx, featureCodes, configMap, needed, futures,
                     (fc, results) -> storeApplicantResults(appCtx, fc, results));
@@ -609,8 +398,8 @@ public class FeatureExtractionServiceImpl implements FeatureExtractionService {
     }
 
     @SuppressWarnings("unchecked")
-    private void storeResults(OrderFeatureContext ctx, FeatureConfig fc,
-                              Map<String, Object> results) {
+    private void storeOrderResults(OrderFeatureContext ctx, FeatureConfig fc,
+                                   Map<String, Object> results) {
         StorageLevel level = fc.getStorageLevel();
 
         for (Map.Entry<String, Object> entry : results.entrySet()) {

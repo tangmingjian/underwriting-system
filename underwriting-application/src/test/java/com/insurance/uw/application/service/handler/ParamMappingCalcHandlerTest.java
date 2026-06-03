@@ -201,8 +201,9 @@ class ParamMappingCalcHandlerTest {
         @Test
         @DisplayName("entityType=insured → 遍历相关被保人，读取 Insured 字段")
         void insuredEntityType() {
-            orderCtx.setPolicyInsuredFeatureMap(
-                    Map.of("POL001", Map.of("INS001", java.util.Set.of("TEST_FC"))));
+            FeatureTargeting ft = new FeatureTargeting();
+            ft.setInputMaps(Map.of("POL001", Map.of("INS001", java.util.Set.of("TEST_FC"))), null);
+            orderCtx.setFeatureTargeting(ft);
             Map<String, Object> result = handler.execute(orderCtx, fc("insured.age"));
 
             assertThat(result).containsKey("INS001");
