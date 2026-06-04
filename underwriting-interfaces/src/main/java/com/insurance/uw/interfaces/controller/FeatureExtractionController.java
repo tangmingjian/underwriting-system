@@ -1,8 +1,8 @@
 package com.insurance.uw.interfaces.controller;
 
-import com.insurance.uw.feature.api.FeatureExtractionRequest;
-import com.insurance.uw.feature.api.FeatureExtractionResult;
-import com.insurance.uw.feature.api.FeatureExtractionService;
+import com.insurance.uw.application.service.FeatureExtractionService;
+import com.insurance.uw.sdk.feature.FeatureExtractionRequest;
+import com.insurance.uw.sdk.feature.FeatureExtractionResult;
 import org.springframework.web.bind.annotation.*;
 
 /**

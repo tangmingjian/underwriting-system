@@ -7,8 +7,8 @@ import com.insurance.uw.domain.context.PolicyFeatureContext;
 import com.insurance.uw.domain.model.entity.Order;
 import com.insurance.uw.domain.model.entity.UnderwritingRule;
 import com.insurance.uw.domain.repository.UnderwritingRuleRepository;
-import com.insurance.uw.feature.api.FeatureExtractionRequest;
-import com.insurance.uw.feature.api.FeatureExtractionResult;
+import com.insurance.uw.sdk.feature.FeatureExtractionRequest;
+import com.insurance.uw.sdk.feature.FeatureExtractionResult;
 import org.springframework.expression.ExpressionParser;
 import org.springframework.expression.spel.standard.SpelExpressionParser;
 

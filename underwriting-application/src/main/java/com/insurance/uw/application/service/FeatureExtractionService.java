@@ -1,10 +1,10 @@
-package com.insurance.uw.feature.api;
+package com.insurance.uw.application.service;
+
+import com.insurance.uw.sdk.feature.FeatureExtractionRequest;
+import com.insurance.uw.sdk.feature.FeatureExtractionResult;
 
 /**
- * 特征取数服务接口 — 跨模块/跨进程的远程契约
- *
- * 后期独立部署时，规则服务侧通过 HTTP 客户端实现此接口，
- * 特征服务侧提供此接口的 HTTP 端点。
+ * 特征取数服务接口 — 内部服务契约（供 Controllers 本地注入）
  */
 public interface FeatureExtractionService {
 

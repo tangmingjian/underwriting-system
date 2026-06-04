@@ -5,7 +5,7 @@ import com.insurance.uw.common.enums.CalcType;
 import com.insurance.uw.domain.context.*;
 import com.insurance.uw.domain.model.entity.*;
 import com.insurance.uw.domain.model.valueobject.CalcConfig;
-import com.insurance.uw.feature.core.handler.ParamMappingCalcHandler;
+import com.insurance.uw.application.feature.handler.ParamMappingCalcHandler;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;

@@ -1,4 +1,4 @@
-package com.insurance.uw.feature.core.routing;
+package com.insurance.uw.application.feature.routing;
 
 import com.insurance.uw.common.enums.AggregationLevel;
 import com.insurance.uw.common.enums.StorageLevel;

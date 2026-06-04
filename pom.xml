@@ -24,7 +24,7 @@
         <module>underwriting-application</module>
         <module>underwriting-infrastructure</module>
         <module>underwriting-interfaces</module>
-        <module>underwriting-feature</module>
+        <module>underwriting-feature-sdk</module>
         <module>underwriting-bootstrap</module>
     </modules>
 
@@ -87,7 +87,7 @@
             </dependency>
             <dependency>
                 <groupId>com.insurance.uw</groupId>
-                <artifactId>underwriting-feature</artifactId>
+                <artifactId>underwriting-feature-sdk</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>

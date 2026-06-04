@@ -8,7 +8,7 @@ import com.insurance.uw.domain.model.valueobject.ServiceConfig;
 import com.insurance.uw.domain.repository.FeatureScriptRepository;
 import com.insurance.uw.domain.service.DownstreamApiClient;
 import com.insurance.uw.domain.service.GroovyMappingEngine;
-import com.insurance.uw.feature.core.handler.ExternalApiCalcHandler;
+import com.insurance.uw.application.feature.handler.ExternalApiCalcHandler;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;

@@ -19,10 +19,7 @@
             <groupId>com.insurance.uw</groupId>
             <artifactId>underwriting-interfaces</artifactId>
         </dependency>
-        <dependency>
-            <groupId>com.insurance.uw</groupId>
-            <artifactId>underwriting-feature</artifactId>
-        </dependency>
+
         <dependency>
             <groupId>com.insurance.uw</groupId>
             <artifactId>underwriting-infrastructure</artifactId>

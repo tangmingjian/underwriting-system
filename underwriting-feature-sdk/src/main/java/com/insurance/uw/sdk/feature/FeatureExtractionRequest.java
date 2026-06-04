@@ -1,4 +1,4 @@
-package com.insurance.uw.feature.api;
+package com.insurance.uw.sdk.feature;
 
 import com.insurance.uw.domain.model.entity.Order;
 

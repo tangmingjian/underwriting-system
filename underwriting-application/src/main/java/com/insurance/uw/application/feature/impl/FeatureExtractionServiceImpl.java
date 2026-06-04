@@ -1,5 +1,8 @@
-package com.insurance.uw.feature.core.impl;
+package com.insurance.uw.application.feature.impl;
 
+import com.insurance.uw.application.feature.handler.FeatureCalcHandler;
+import com.insurance.uw.application.feature.routing.FeatureResultDispatcher;
+import com.insurance.uw.application.service.FeatureExtractionService;
 import com.insurance.uw.common.enums.AggregationLevel;
 import com.insurance.uw.common.enums.CalcType;
 import com.insurance.uw.domain.context.ApplicantFeatureContext;
@@ -12,11 +15,8 @@ import com.insurance.uw.domain.model.entity.Order;
 import com.insurance.uw.domain.repository.FeatureConfigRepository;
 import com.insurance.uw.domain.service.FeatureDependencyResolver;
 import com.insurance.uw.domain.service.FeatureResultCache;
-import com.insurance.uw.feature.api.FeatureExtractionRequest;
-import com.insurance.uw.feature.api.FeatureExtractionResult;
-import com.insurance.uw.feature.api.FeatureExtractionService;
-import com.insurance.uw.feature.core.handler.FeatureCalcHandler;
-import com.insurance.uw.feature.core.routing.FeatureResultDispatcher;
+import com.insurance.uw.sdk.feature.FeatureExtractionRequest;
+import com.insurance.uw.sdk.feature.FeatureExtractionResult;
 
 import java.util.*;
 import java.util.concurrent.CompletableFuture;

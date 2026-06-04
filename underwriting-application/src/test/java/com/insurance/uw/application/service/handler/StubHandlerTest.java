@@ -2,9 +2,9 @@ package com.insurance.uw.application.service.handler;
 
 import com.insurance.uw.common.enums.CalcType;
 import com.insurance.uw.domain.model.entity.FeatureConfig;
-import com.insurance.uw.feature.core.handler.CompositeCalcHandler;
-import com.insurance.uw.feature.core.handler.DatabaseQueryCalcHandler;
-import com.insurance.uw.feature.core.handler.ExpressionCalcHandler;
+import com.insurance.uw.application.feature.handler.CompositeCalcHandler;
+import com.insurance.uw.application.feature.handler.DatabaseQueryCalcHandler;
+import com.insurance.uw.application.feature.handler.ExpressionCalcHandler;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;

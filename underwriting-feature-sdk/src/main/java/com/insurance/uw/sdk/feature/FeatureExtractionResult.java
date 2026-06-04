@@ -1,4 +1,4 @@
-package com.insurance.uw.feature.api;
+package com.insurance.uw.sdk.feature;
 
 import java.util.HashMap;
 import java.util.Map;
