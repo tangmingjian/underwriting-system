@@ -20,4 +20,9 @@ public interface FeatureScriptRepository {
 
     void delete(Long id);
 
+    /**
+     * 清除指定脚本 ID 的 Redis 缓存
+     */
+    void evictCache(String scriptId);
+
 }

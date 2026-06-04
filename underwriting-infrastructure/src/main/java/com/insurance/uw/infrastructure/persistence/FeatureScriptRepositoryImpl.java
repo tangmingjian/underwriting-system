@@ -68,6 +68,12 @@ public class FeatureScriptRepositoryImpl implements FeatureScriptRepository {
         }
     }
 
+    @Override
+    public void evictCache(String scriptId) {
+        cache.evict(CacheOps.scriptKey(scriptId));
+        cache.evict(CacheOps.scriptAllKey());
+    }
+
     private void evict(FeatureScript script) {
         cache.evict(CacheOps.scriptKey(script.getScriptId()));
         cache.evict(CacheOps.scriptAllKey());

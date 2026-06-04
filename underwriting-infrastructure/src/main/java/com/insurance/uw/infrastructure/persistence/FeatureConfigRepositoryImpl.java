@@ -106,6 +106,12 @@ public class FeatureConfigRepositoryImpl implements FeatureConfigRepository {
         }
     }
 
+    @Override
+    public void evictCache(String featureCode) {
+        cache.evict(CacheOps.fcKey(featureCode));
+        cache.evict(CacheOps.fcAllKey());
+    }
+
     private void evict(FeatureConfig config) {
         cache.evict(CacheOps.fcKey(config.getFeatureCode()));
         cache.evict(CacheOps.fcAllKey());

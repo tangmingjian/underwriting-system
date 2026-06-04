@@ -80,7 +80,7 @@ class FeatureConfigApplicationServiceTest {
         }
 
         @Test
-        @DisplayName("update → 更新并清除关联缓存")
+        @DisplayName("update → 更新并清除 Redis + 本地缓存")
         void updateEvictsCache() {
             FeatureConfig fc = new FeatureConfig();
             fc.setFeatureCode("FC1");
@@ -93,7 +93,9 @@ class FeatureConfigApplicationServiceTest {
 
             verify(featureConfigRepository).update(fc);
             verify(groovyEngine).evictScript("FC1");
+            verify(scriptRepository).evictCache("in-script");
             verify(groovyEngine).evictScript("in-script");
+            verify(scriptRepository).evictCache("out-script");
             verify(groovyEngine).evictScript("out-script");
         }
 
@@ -125,7 +127,7 @@ class FeatureConfigApplicationServiceTest {
     class CacheEviction {
 
         @Test
-        @DisplayName("evictScriptCache → featureCode 存在时清除 featureCode + 关联脚本缓存")
+        @DisplayName("evictScriptCache → featureCode 存在时清除 Redis + 本地缓存")
         void evictByFeatureCode() {
             FeatureConfig fc = new FeatureConfig();
             fc.setFeatureCode("FC1");
@@ -137,19 +139,24 @@ class FeatureConfigApplicationServiceTest {
 
             service.evictScriptCache("FC1");
 
-            verify(groovyEngine, times(2)).evictScript("FC1");
+            verify(featureConfigRepository).evictCache("FC1");
+            verify(groovyEngine).evictScript("FC1");
+            verify(featureConfigRepository).findByFeatureCode("FC1");
+            verify(scriptRepository).evictCache("in-1");
             verify(groovyEngine).evictScript("in-1");
         }
 
         @Test
-        @DisplayName("evictScriptCache → featureCode 不存在时只清除 featureCode")
+        @DisplayName("evictScriptCache → featureCode 不存在时只清除 featureCode 缓存")
         void evictWhenFeatureNotFound() {
             when(featureConfigRepository.findByFeatureCode("FCX")).thenReturn(Optional.empty());
 
             service.evictScriptCache("FCX");
 
+            verify(featureConfigRepository).evictCache("FCX");
             verify(groovyEngine).evictScript("FCX");
             verify(featureConfigRepository).findByFeatureCode("FCX");
+            verify(scriptRepository, never()).evictCache(anyString());
         }
     }
 

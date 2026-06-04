@@ -43,6 +43,7 @@ public class FeatureConfigApplicationService {
 
     public void update(FeatureConfig config) {
         repository.update(config);
+        groovyEngine.evictScript(config.getFeatureCode());
         evictRelatedCaches(config);
     }
 
@@ -51,19 +52,25 @@ public class FeatureConfigApplicationService {
     }
 
     /**
-     * 清除特征关联的所有脚本缓存（特征码 + calc_config 中引用的脚本 ID）
+     * 清除特征关联的所有缓存（Redis + 本地 Caffeine），包括特征码本身及其引用的脚本 ID。
      */
     public void evictScriptCache(String featureCode) {
+        repository.evictCache(featureCode);
         groovyEngine.evictScript(featureCode);
         repository.findByFeatureCode(featureCode).ifPresent(this::evictRelatedCaches);
     }
 
     private void evictRelatedCaches(FeatureConfig config) {
-        groovyEngine.evictScript(config.getFeatureCode());
         CalcConfig cc = config.getCalcConfig();
         if (cc != null) {
-            if (cc.getInputScriptId() != null) groovyEngine.evictScript(cc.getInputScriptId());
-            if (cc.getOutputScriptId() != null) groovyEngine.evictScript(cc.getOutputScriptId());
+            if (cc.getInputScriptId() != null) {
+                scriptRepository.evictCache(cc.getInputScriptId());
+                groovyEngine.evictScript(cc.getInputScriptId());
+            }
+            if (cc.getOutputScriptId() != null) {
+                scriptRepository.evictCache(cc.getOutputScriptId());
+                groovyEngine.evictScript(cc.getOutputScriptId());
+            }
         }
     }
 

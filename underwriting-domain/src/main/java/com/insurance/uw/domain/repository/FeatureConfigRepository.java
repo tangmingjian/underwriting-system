@@ -22,4 +22,9 @@ public interface FeatureConfigRepository {
 
     void delete(Long id);
 
+    /**
+     * 清除指定特征码的 Redis 缓存
+     */
+    void evictCache(String featureCode);
+
 }
