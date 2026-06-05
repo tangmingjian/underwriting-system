@@ -224,7 +224,6 @@ public class FeatureExtractionServiceImpl implements FeatureExtractionService {
             //第二遍：统一处理依赖，此时 configMap已经包含同批次的全部记录
             Set<String> nextToLoad = new LinkedHashSet<>();
             for (FeatureConfig fc : batch) {
-                configMap.putIfAbsent(fc.getFeatureCode(), fc);
                 if (fc.getDependsOn() != null) {
                     for (String dep : fc.getDependsOn()) {
                         if (!configMap.containsKey(dep)) {
