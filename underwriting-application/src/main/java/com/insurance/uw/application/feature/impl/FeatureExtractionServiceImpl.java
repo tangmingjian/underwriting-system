@@ -18,6 +18,8 @@ import com.insurance.uw.domain.service.FeatureResultCache;
 import com.insurance.uw.sdk.feature.FeatureExtractionRequest;
 import com.insurance.uw.sdk.feature.FeatureExtractionResult;
 
+import org.slf4j.MDC;
+
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
@@ -69,9 +71,10 @@ public class FeatureExtractionServiceImpl implements FeatureExtractionService {
 
         // ---- 请求概览 ----
         LOG.info("========== 特征提取开始: orderId=" + orderId + " ==========");
-        if (requestedCodes == null || requestedCodes.isEmpty()) {
+        Set<String> originalCodes = requestedCodes != null ? requestedCodes : Set.of();
+        if (originalCodes.isEmpty()) {
             LOG.info("[请求] orderId=" + orderId + " 无请求特征码，返回空结果");
-            return convertToResult(new OrderFeatureContext(order));
+            return convertToResult(new OrderFeatureContext(order), originalCodes);
         }
         logRequestDetail(request, orderId);
 
@@ -101,8 +104,8 @@ public class FeatureExtractionServiceImpl implements FeatureExtractionService {
             executeLayer(orderCtx, layer, configMap, dispatcher);
         }
 
-        // ---- 输出结果 ----
-        FeatureExtractionResult result = convertToResult(orderCtx);
+        // ---- 输出结果（只返回入参要求的特征码，过滤掉依赖链展开的中间特征） ----
+        FeatureExtractionResult result = convertToResult(orderCtx, originalCodes);
         logFinalResult(result, orderId);
         LOG.info("========== 特征提取完成: orderId=" + orderId + " ==========");
         return result;
@@ -313,32 +316,40 @@ public class FeatureExtractionServiceImpl implements FeatureExtractionService {
             List<FeatureConfig> cfgs = applicable.stream().map(configMap::get).toList();
             if (canBatch(applicable, cfgs)) {
                 List<String> batchCodes = applicable;
+                Map<String, String> mdcContext = MDC.getCopyOfContextMap();
                 futures.add(CompletableFuture.runAsync(() -> {
-                    LOG.info("[批处理] 合并调用: " + batchCodes + " ctx=" + describeContext(ctx));
-                    Map<String, Map<String, Object>> batchResults =
-                            calcHandlers.get(CalcType.EXTERNAL_API).executeBatch(ctx, cfgs);
-                    for (String fc : batchCodes) {
-                        Map<String, Object> results = batchResults.get(fc);
-                        if (results != null) {
-                            FeatureConfig cfg = configMap.get(fc);
-                            // 打印批处理中每个特征的计算结果
-                            String ctxDesc = describeContext(ctx);
-                            results.forEach((targetKey, rawValue) ->
-                                    LOG.info("[取值] " + fc
-                                            + " calcType=" + cfg.getCalcType()
-                                            + " agg=" + cfg.getAggregation()
-                                            + " storage=" + cfg.getStorageLevel()
-                                            + " ctx=" + ctxDesc
-                                            + " targetKey=" + targetKey
-                                            + " → " + rawValue));
-                            dispatcher.dispatch(ctx, cfg, results);
-                            Integer ttlSeconds = cfg.getTtlSeconds();
-                            if (ttlSeconds != null && ttlSeconds > 0) {
-                                for (var entry : results.entrySet()) {
-                                    resultCache.put(fc, entry.getKey(), entry.getValue(), ttlSeconds);
+                    if (mdcContext != null) {
+                        MDC.setContextMap(mdcContext);
+                    }
+                    try {
+                        LOG.info("[批处理] 合并调用: " + batchCodes + " ctx=" + describeContext(ctx));
+                        Map<String, Map<String, Object>> batchResults =
+                                calcHandlers.get(CalcType.EXTERNAL_API).executeBatch(ctx, cfgs);
+                        for (String fc : batchCodes) {
+                            Map<String, Object> results = batchResults.get(fc);
+                            if (results != null) {
+                                FeatureConfig cfg = configMap.get(fc);
+                                // 打印批处理中每个特征的计算结果
+                                String ctxDesc = describeContext(ctx);
+                                results.forEach((targetKey, rawValue) ->
+                                        LOG.info("[取值] " + fc
+                                                + " calcType=" + cfg.getCalcType()
+                                                + " agg=" + cfg.getAggregation()
+                                                + " storage=" + cfg.getStorageLevel()
+                                                + " ctx=" + ctxDesc
+                                                + " targetKey=" + targetKey
+                                                + " → " + rawValue));
+                                dispatcher.dispatch(ctx, cfg, results);
+                                Integer ttlSeconds = cfg.getTtlSeconds();
+                                if (ttlSeconds != null && ttlSeconds > 0) {
+                                    for (var entry : results.entrySet()) {
+                                        resultCache.put(fc, entry.getKey(), entry.getValue(), ttlSeconds);
+                                    }
                                 }
                             }
                         }
+                    } finally {
+                        MDC.clear();
                     }
                 }, executor));
             } else {
@@ -514,14 +525,24 @@ public class FeatureExtractionServiceImpl implements FeatureExtractionService {
 
     /**
      * 按计算类型分发：PARAM_MAPPING 同步执行（纯 CPU 操作，避免线程池调度开销），
-     * 其他类型通过 CompletableFuture.runAsync 并发执行。
+     * 其他类型通过 CompletableFuture.runAsync 并发执行，并透传主线程 MDC 上下文。
      */
     private void dispatchFeature(FeatureConfig cfg, List<CompletableFuture<Void>> futures,
                                   Runnable action) {
         if (cfg.getCalcType() == CalcType.PARAM_MAPPING) {
             action.run();
         } else {
-            futures.add(CompletableFuture.runAsync(action, executor));
+            Map<String, String> mdcContext = MDC.getCopyOfContextMap();
+            futures.add(CompletableFuture.runAsync(() -> {
+                if (mdcContext != null) {
+                    MDC.setContextMap(mdcContext);
+                }
+                try {
+                    action.run();
+                } finally {
+                    MDC.clear();
+                }
+            }, executor));
         }
     }
 
@@ -538,35 +559,50 @@ public class FeatureExtractionServiceImpl implements FeatureExtractionService {
     // ==================== 内部上下文 → 外部结果 ====================
 
     /**
-     * 将内部 OrderFeatureContext 树转换为扁平化的 FeatureExtractionResult
+     * 将内部 OrderFeatureContext 树转换为扁平化的 FeatureExtractionResult，
+     * 只返回入参要求的特征码，过滤掉依赖链展开的中间特征。
      */
-    private FeatureExtractionResult convertToResult(OrderFeatureContext orderCtx) {
+    private FeatureExtractionResult convertToResult(OrderFeatureContext orderCtx,
+                                                     Set<String> requestedCodes) {
         FeatureExtractionResult result = new FeatureExtractionResult();
 
-        // ORDER 级特征
-        result.getOrderFeatures().putAll(orderCtx.getOrderFeatures());
+        // ORDER 级特征（只保留入参要求的）
+        orderCtx.getOrderFeatures().forEach((fc, val) -> {
+            if (requestedCodes.contains(fc)) {
+                result.getOrderFeatures().put(fc, val);
+            }
+        });
 
-        // 保单 / 投保人 / 被保人特征（扁平化）
+        // 保单 / 投保人 / 被保人特征（扁平化，只保留入参要求的）
         for (PolicyFeatureContext polCtx : orderCtx.getPolicies()) {
-            if (!polCtx.getPolicyFeatures().isEmpty()) {
-                result.getPolicyFeatures().put(polCtx.getPolicyId(),
-                        new HashMap<>(polCtx.getPolicyFeatures()));
+            Map<String, Object> polFeats = filterRequested(polCtx.getPolicyFeatures(), requestedCodes);
+            if (!polFeats.isEmpty()) {
+                result.getPolicyFeatures().put(polCtx.getPolicyId(), polFeats);
             }
 
             ApplicantFeatureContext appCtx = polCtx.getApplicantCtx();
-            if (appCtx != null && !appCtx.getFeatures().isEmpty()) {
-                result.putApplicantFeature(polCtx.getPolicyId(), appCtx.getApplicantId(),
-                        new HashMap<>(appCtx.getFeatures()));
+            if (appCtx != null) {
+                Map<String, Object> appFeats = filterRequested(appCtx.getFeatures(), requestedCodes);
+                if (!appFeats.isEmpty()) {
+                    result.putApplicantFeature(polCtx.getPolicyId(), appCtx.getApplicantId(), appFeats);
+                }
             }
 
             for (InsuredFeatureContext insCtx : polCtx.getInsureds()) {
-                if (!insCtx.getAcquiredFeatures().isEmpty()) {
-                    result.putInsuredFeature(polCtx.getPolicyId(), insCtx.getInsuredId(),
-                            new HashMap<>(insCtx.getAcquiredFeatures()));
+                Map<String, Object> insFeats = filterRequested(insCtx.getAcquiredFeatures(), requestedCodes);
+                if (!insFeats.isEmpty()) {
+                    result.putInsuredFeature(polCtx.getPolicyId(), insCtx.getInsuredId(), insFeats);
                 }
             }
         }
 
         return result;
+    }
+
+    private static Map<String, Object> filterRequested(Map<String, Object> features,
+                                                        Set<String> requestedCodes) {
+        Map<String, Object> filtered = new HashMap<>(features);
+        filtered.keySet().retainAll(requestedCodes);
+        return filtered;
     }
 }

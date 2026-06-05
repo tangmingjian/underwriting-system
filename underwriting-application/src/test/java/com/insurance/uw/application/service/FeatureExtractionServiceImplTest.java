@@ -481,7 +481,7 @@ class FeatureExtractionServiceImplTest {
             when(featureConfigRepository.findByFeatureCodes(any()))
                     .thenReturn(List.of(fc));
             when(paramMappingHandler.execute(any(), eq(fc)))
-                    .thenReturn(Map.of("INS001", Map.of("riskScore", 680)));
+                    .thenReturn(Map.of("INS001", Map.of("BASE_RISK", Map.of("riskScore", 680))));
 
             // Only POL001/INS001 needs BASE_RISK; POL002 also has INS001 but doesn't need it
             Map<String, Map<String, Set<String>>> insuredMap = Map.of(
@@ -492,7 +492,7 @@ class FeatureExtractionServiceImplTest {
 
             // POL001/INS001 gets the feature (mapping says it's needed)
             assertThat(result.getInsuredFeatures().get("POL001").get("INS001"))
-                    .containsEntry("riskScore", 680);
+                    .containsEntry("BASE_RISK", Map.of("riskScore", 680));
             // POL002/INS001 does NOT get the feature (mapping doesn't include it)
             assertThat(result.getInsuredFeatures()).doesNotContainKey("POL002");
         }
@@ -523,9 +523,9 @@ class FeatureExtractionServiceImplTest {
                     .thenReturn(List.of(fcScore)) // only RISK_SCORE queried directly
                     .thenReturn(List.of(fcBase));  // BASE_RISK loaded as dependency
 
-            // Layer 0: BASE_RISK executes first
+            // Layer 0: BASE_RISK executes first (wraps with featureCode as key, matching real handler behavior)
             when(paramMappingHandler.execute(any(), eq(fcBase)))
-                    .thenReturn(Map.of("INS001", Map.of("riskScore", 85)));
+                    .thenReturn(Map.of("INS001", Map.of("BASE_RISK", Map.of("riskScore", 85))));
             // Layer 1: RISK_SCORE depends on BASE_RISK
             when(paramMappingHandler.execute(any(), eq(fcScore)))
                     .thenReturn(Map.of("INS001", Map.of("RISK_SCORE", 85)));
@@ -575,7 +575,8 @@ class FeatureExtractionServiceImplTest {
 
             Map<String, Object> features = result.getInsuredFeatures()
                     .get("POL001").get("INS001");
-            assertThat(features).containsKeys("A", "B", "C");
+            // 只返回入参要求的特征 C，A、B 是依赖链中间特征，不应暴露给调用方
+            assertThat(features).containsOnlyKeys("C");
         }
     }
 
