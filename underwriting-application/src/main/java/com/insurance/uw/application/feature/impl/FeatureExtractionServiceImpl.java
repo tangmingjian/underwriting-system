@@ -217,6 +217,11 @@ public class FeatureExtractionServiceImpl implements FeatureExtractionService {
 
         while (!toLoad.isEmpty()) {
             List<FeatureConfig> batch = featureConfigRepository.findByFeatureCodes(new ArrayList<>(toLoad));
+            // 第一遍：全部加入configMap，避免同批次内依赖检查误判
+            for (FeatureConfig fc : batch) {
+                configMap.putIfAbsent(fc.getFeatureCode(),fc);
+            }
+            //第二遍：统一处理依赖，此时 configMap已经包含同批次的全部记录
             Set<String> nextToLoad = new LinkedHashSet<>();
             for (FeatureConfig fc : batch) {
                 configMap.putIfAbsent(fc.getFeatureCode(), fc);
