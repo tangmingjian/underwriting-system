@@ -39,6 +39,11 @@ public class FeatureScriptRepositoryImpl implements FeatureScriptRepository {
     }
 
     @Override
+    public Optional<FeatureScript> findById(Long id) {
+        return Optional.ofNullable(mapper.selectById(id));
+    }
+
+    @Override
     public List<FeatureScript> findAllEnabled() {
         return cache.getList(CacheOps.scriptAllKey(), FeatureScript.class,
                 () -> mapper.selectList(

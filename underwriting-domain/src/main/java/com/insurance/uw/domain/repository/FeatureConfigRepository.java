@@ -20,6 +20,11 @@ public interface FeatureConfigRepository {
 
     void update(FeatureConfig config);
 
+    /**
+     * 绕过缓存，直接查询 DB。
+     */
+    Optional<FeatureConfig> findByFeatureCodeDirect(String featureCode);
+
     void delete(Long id);
 
     /**

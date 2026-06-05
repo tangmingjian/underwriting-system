@@ -49,7 +49,7 @@ public class FeatureConfigController {
 
     @PostMapping("/{code}/evict-cache")
     public String evictCache(@PathVariable String code) {
-        service.evictScriptCache(code);
+        service.evictCache(code);
         return "cache evicted for " + code;
     }
 

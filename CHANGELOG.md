@@ -1,5 +1,23 @@
 # Change Log
 
+## 2026-06-05: convertToResult 改用逐实体过滤 — 修复同保单不同被保人特征串扰
+
+**修改文件**:
+- `underwriting-application/src/main/java/com/insurance/uw/application/feature/impl/FeatureExtractionServiceImpl.java`
+
+**改动**:
+- `convertToResult` 不再用全局 `Set<String> requestedCodes` 过滤，改为从 `FeatureTargeting` 按实体逐实体获取需求：
+  - 被保人：`ft.getNeededFeaturesForInsured(policyId, insuredId)`
+  - 投保人：`ft.getNeededFeaturesForApplicant(policyId, applicantId)`
+  - 保单级：`ft.collectFeatureCodesForPolicy(policyId)`
+  - 订单级：`ft.collectAllFeatureCodes()`
+- `filterRequested` 的 `allowed` 参数改为可 null：null 不过滤（无映射场景）、空集全滤。
+- 去掉 `extract()` 中不再需要的 `originalCodes` 局部变量。
+
+**原因**: 上一版用 `request.getFeatureCodes()` 的全局并集过滤，但该并集不能区分不同实体的需求。场景：同保单下被保人 1 需要 A，被保人 2 需要 B，A 依赖 B——B 因依赖传播被存入被保人 1 的上下文，全局并集 `{A, B}` 无法把 B 从被保人 1 的出参中滤掉。现在按每个实体自己的入参需求分别过滤。
+
+---
+
 ## 2026-06-05: MDC 透传 — 异步线程日志上下文
 
 **修改文件**:

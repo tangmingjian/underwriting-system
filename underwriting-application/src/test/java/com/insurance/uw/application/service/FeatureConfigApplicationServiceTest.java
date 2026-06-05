@@ -80,37 +80,77 @@ class FeatureConfigApplicationServiceTest {
         }
 
         @Test
-        @DisplayName("update → 更新并清除 Redis + 本地缓存")
+        @DisplayName("update → 收集新旧 scriptId，双重清除包裹 repository.update()")
         void updateEvictsCache() {
-            FeatureConfig fc = new FeatureConfig();
-            fc.setFeatureCode("FC1");
-            CalcConfig calcConfig = new CalcConfig();
-            calcConfig.setInputScriptId("in-script");
-            calcConfig.setOutputScriptId("out-script");
-            fc.setCalcConfig(calcConfig);
+            FeatureConfig oldFc = new FeatureConfig();
+            oldFc.setFeatureCode("FC1");
+            CalcConfig oldCc = new CalcConfig();
+            oldCc.setInputScriptId("old-in");
+            oldCc.setOutputScriptId("old-out");
+            oldFc.setCalcConfig(oldCc);
 
-            service.update(fc);
+            FeatureConfig newFc = new FeatureConfig();
+            newFc.setFeatureCode("FC1");
+            CalcConfig newCc = new CalcConfig();
+            newCc.setInputScriptId("in-script");
+            newCc.setOutputScriptId("out-script");
+            newFc.setCalcConfig(newCc);
 
-            verify(featureConfigRepository).update(fc);
-            verify(groovyEngine).evictScript("FC1");
-            verify(scriptRepository).evictCache("in-script");
-            verify(groovyEngine).evictScript("in-script");
-            verify(scriptRepository).evictCache("out-script");
-            verify(groovyEngine).evictScript("out-script");
+            when(featureConfigRepository.findByFeatureCodeDirect("FC1")).thenReturn(Optional.of(oldFc));
+
+            service.update(newFc);
+
+            // 只读一次 DB
+            verify(featureConfigRepository).findByFeatureCodeDirect("FC1");
+            // update 在两个 evictScriptCaches 之间调用
+            var inOrder = inOrder(scriptRepository, groovyEngine, featureConfigRepository);
+            // 第一遍清除：旧 + 新 scriptId
+            inOrder.verify(scriptRepository).evictCache("old-in");
+            inOrder.verify(groovyEngine).evictScript("old-in");
+            inOrder.verify(scriptRepository).evictCache("old-out");
+            inOrder.verify(groovyEngine).evictScript("old-out");
+            inOrder.verify(scriptRepository).evictCache("in-script");
+            inOrder.verify(groovyEngine).evictScript("in-script");
+            inOrder.verify(scriptRepository).evictCache("out-script");
+            inOrder.verify(groovyEngine).evictScript("out-script");
+            // repository.update 在第一遍和第二遍之间
+            inOrder.verify(featureConfigRepository).update(newFc);
+            // 第二遍清除：同旧 + 新 scriptId
+            inOrder.verify(scriptRepository).evictCache("old-in");
+            inOrder.verify(groovyEngine).evictScript("old-in");
+            inOrder.verify(scriptRepository).evictCache("old-out");
+            inOrder.verify(groovyEngine).evictScript("old-out");
+            inOrder.verify(scriptRepository).evictCache("in-script");
+            inOrder.verify(groovyEngine).evictScript("in-script");
+            inOrder.verify(scriptRepository).evictCache("out-script");
+            inOrder.verify(groovyEngine).evictScript("out-script");
         }
 
         @Test
-        @DisplayName("update → calcConfig 为 null 时只清除 featureCode 缓存")
-        void updateNullCalcConfig() {
-            FeatureConfig fc = new FeatureConfig();
-            fc.setFeatureCode("FC1");
+        @DisplayName("update → 旧配置不存在时双重清除只含新 scriptId")
+        void updateNoOldConfig() {
+            FeatureConfig newFc = new FeatureConfig();
+            newFc.setFeatureCode("FC1");
+            CalcConfig newCc = new CalcConfig();
+            newCc.setInputScriptId("in-script");
+            newFc.setCalcConfig(newCc);
 
-            service.update(fc);
+            when(featureConfigRepository.findByFeatureCodeDirect("FC1")).thenReturn(Optional.empty());
 
-            verify(featureConfigRepository).update(fc);
-            verify(groovyEngine).evictScript("FC1");
-            verify(groovyEngine, never()).evictScript("in-script");
-            verify(groovyEngine, never()).evictScript("out-script");
+            service.update(newFc);
+
+            var inOrder = inOrder(scriptRepository, groovyEngine, featureConfigRepository);
+            // 第一遍清除
+            inOrder.verify(scriptRepository).evictCache("in-script");
+            inOrder.verify(groovyEngine).evictScript("in-script");
+            // update 在中间
+            inOrder.verify(featureConfigRepository).update(newFc);
+            // 第二遍清除
+            inOrder.verify(scriptRepository).evictCache("in-script");
+            inOrder.verify(groovyEngine).evictScript("in-script");
+            // 没有旧 scriptId 的清理
+            verify(scriptRepository, never()).evictCache("old-in");
+            verify(groovyEngine, never()).evictScript("old-in");
         }
 
         @Test
@@ -127,7 +167,7 @@ class FeatureConfigApplicationServiceTest {
     class CacheEviction {
 
         @Test
-        @DisplayName("evictScriptCache → featureCode 存在时清除 Redis + 本地缓存")
+        @DisplayName("evictScriptCache → 一次读 DB，双重清除包裹 FC evict")
         void evictByFeatureCode() {
             FeatureConfig fc = new FeatureConfig();
             fc.setFeatureCode("FC1");
@@ -135,28 +175,33 @@ class FeatureConfigApplicationServiceTest {
             cc.setInputScriptId("in-1");
             fc.setCalcConfig(cc);
 
-            when(featureConfigRepository.findByFeatureCode("FC1")).thenReturn(Optional.of(fc));
+            when(featureConfigRepository.findByFeatureCodeDirect("FC1")).thenReturn(Optional.of(fc));
 
-            service.evictScriptCache("FC1");
+            service.evictCache("FC1");
 
-            verify(featureConfigRepository).evictCache("FC1");
-            verify(groovyEngine).evictScript("FC1");
-            verify(featureConfigRepository).findByFeatureCode("FC1");
-            verify(scriptRepository).evictCache("in-1");
-            verify(groovyEngine).evictScript("in-1");
+            // 只读一次 DB
+            verify(featureConfigRepository).findByFeatureCodeDirect("FC1");
+            // 顺序验证：第一遍清脚本 → 清 FC → 第二遍清脚本
+            var inOrder = inOrder(scriptRepository, groovyEngine, featureConfigRepository);
+            inOrder.verify(scriptRepository).evictCache("in-1");
+            inOrder.verify(groovyEngine).evictScript("in-1");
+            inOrder.verify(featureConfigRepository).evictCache("FC1");
+            inOrder.verify(scriptRepository).evictCache("in-1");
+            inOrder.verify(groovyEngine).evictScript("in-1");
         }
 
         @Test
-        @DisplayName("evictScriptCache → featureCode 不存在时只清除 featureCode 缓存")
+        @DisplayName("evictScriptCache → featureCode 不存在时只清除 FC 缓存")
         void evictWhenFeatureNotFound() {
-            when(featureConfigRepository.findByFeatureCode("FCX")).thenReturn(Optional.empty());
+            when(featureConfigRepository.findByFeatureCodeDirect("FCX")).thenReturn(Optional.empty());
 
-            service.evictScriptCache("FCX");
+            service.evictCache("FCX");
 
+            // 只读一次 DB
+            verify(featureConfigRepository).findByFeatureCodeDirect("FCX");
             verify(featureConfigRepository).evictCache("FCX");
-            verify(groovyEngine).evictScript("FCX");
-            verify(featureConfigRepository).findByFeatureCode("FCX");
             verify(scriptRepository, never()).evictCache(anyString());
+            verify(groovyEngine, never()).evictScript(anyString());
         }
     }
 
@@ -209,11 +254,17 @@ class FeatureConfigApplicationServiceTest {
         }
 
         @Test
-        @DisplayName("deleteScript → 委托给 scriptRepository.delete()")
+        @DisplayName("deleteScript → 先查出 scriptId，删除后清除 Groovy 缓存")
         void deleteScript() {
+            FeatureScript script = new FeatureScript();
+            script.setScriptId("s1");
+            when(scriptRepository.findById(1L)).thenReturn(Optional.of(script));
+
             service.deleteScript(1L);
 
+            verify(scriptRepository).findById(1L);
             verify(scriptRepository).delete(1L);
+            verify(groovyEngine).evictScript("s1");
         }
     }
 }

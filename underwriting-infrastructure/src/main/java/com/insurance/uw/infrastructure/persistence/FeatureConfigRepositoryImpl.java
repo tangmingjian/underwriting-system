@@ -86,6 +86,13 @@ public class FeatureConfigRepositoryImpl implements FeatureConfigRepository {
     }
 
     @Override
+    public Optional<FeatureConfig> findByFeatureCodeDirect(String featureCode) {
+        return Optional.ofNullable(mapper.selectOne(
+                new LambdaQueryWrapper<FeatureConfig>()
+                        .eq(FeatureConfig::getFeatureCode, featureCode)));
+    }
+
+    @Override
     public void save(FeatureConfig config) {
         mapper.insert(config);
         evict(config);

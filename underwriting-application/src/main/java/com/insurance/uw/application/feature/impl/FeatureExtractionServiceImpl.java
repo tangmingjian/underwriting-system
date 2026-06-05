@@ -71,10 +71,9 @@ public class FeatureExtractionServiceImpl implements FeatureExtractionService {
 
         // ---- 请求概览 ----
         LOG.info("========== 特征提取开始: orderId=" + orderId + " ==========");
-        Set<String> originalCodes = requestedCodes != null ? requestedCodes : Set.of();
-        if (originalCodes.isEmpty()) {
+        if (requestedCodes == null || requestedCodes.isEmpty()) {
             LOG.info("[请求] orderId=" + orderId + " 无请求特征码，返回空结果");
-            return convertToResult(new OrderFeatureContext(order), originalCodes);
+            return convertToResult(new OrderFeatureContext(order));
         }
         logRequestDetail(request, orderId);
 
@@ -104,8 +103,8 @@ public class FeatureExtractionServiceImpl implements FeatureExtractionService {
             executeLayer(orderCtx, layer, configMap, dispatcher);
         }
 
-        // ---- 输出结果（只返回入参要求的特征码，过滤掉依赖链展开的中间特征） ----
-        FeatureExtractionResult result = convertToResult(orderCtx, originalCodes);
+        // ---- 输出结果（按入参每实体过滤，避免同保单不同被保人需求不同时串特征） ----
+        FeatureExtractionResult result = convertToResult(orderCtx);
         logFinalResult(result, orderId);
         LOG.info("========== 特征提取完成: orderId=" + orderId + " ==========");
         return result;
@@ -559,39 +558,54 @@ public class FeatureExtractionServiceImpl implements FeatureExtractionService {
     // ==================== 内部上下文 → 外部结果 ====================
 
     /**
-     * 将内部 OrderFeatureContext 树转换为扁平化的 FeatureExtractionResult，
-     * 只返回入参要求的特征码，过滤掉依赖链展开的中间特征。
+     * 将内部 OrderFeatureContext 树转换为扁平化的 FeatureExtractionResult。
+     * <p>
+     * 按入参中每个实体的需求逐实休过滤，确保同保单下被保人 1 只要 A、被保人 2 只要 B 时不会互相串特征。
+     * 依赖展开的中间特征（未被任何实体直接请求）也会被过滤掉。
      */
-    private FeatureExtractionResult convertToResult(OrderFeatureContext orderCtx,
-                                                     Set<String> requestedCodes) {
+    private FeatureExtractionResult convertToResult(OrderFeatureContext orderCtx) {
         FeatureExtractionResult result = new FeatureExtractionResult();
+        FeatureTargeting ft = orderCtx.getFeatureTargeting();
 
-        // ORDER 级特征（只保留入参要求的）
+        // ORDER 级特征：按全局入参过滤
+        Set<String> allRequested = ft != null ? ft.collectAllFeatureCodes() : Set.of();
         orderCtx.getOrderFeatures().forEach((fc, val) -> {
-            if (requestedCodes.contains(fc)) {
+            if (allRequested.contains(fc)) {
                 result.getOrderFeatures().put(fc, val);
             }
         });
 
-        // 保单 / 投保人 / 被保人特征（扁平化，只保留入参要求的）
         for (PolicyFeatureContext polCtx : orderCtx.getPolicies()) {
-            Map<String, Object> polFeats = filterRequested(polCtx.getPolicyFeatures(), requestedCodes);
+            String policyId = polCtx.getPolicyId();
+            Set<String> policyRequested = ft != null
+                    ? ft.collectFeatureCodesForPolicy(policyId) : Set.of();
+
+            // 保单级特征：按该保单下所有实体的需求过滤
+            Map<String, Object> polFeats = filterRequested(polCtx.getPolicyFeatures(), policyRequested);
             if (!polFeats.isEmpty()) {
-                result.getPolicyFeatures().put(polCtx.getPolicyId(), polFeats);
+                result.getPolicyFeatures().put(policyId, polFeats);
             }
 
+            // 投保人特征：按该投保人自己的入参需求过滤
             ApplicantFeatureContext appCtx = polCtx.getApplicantCtx();
             if (appCtx != null) {
-                Map<String, Object> appFeats = filterRequested(appCtx.getFeatures(), requestedCodes);
+                Set<String> appNeeded = ft != null
+                        ? ft.getNeededFeaturesForApplicant(policyId, appCtx.getApplicantId())
+                        : null;
+                Map<String, Object> appFeats = filterRequested(appCtx.getFeatures(), appNeeded);
                 if (!appFeats.isEmpty()) {
-                    result.putApplicantFeature(polCtx.getPolicyId(), appCtx.getApplicantId(), appFeats);
+                    result.putApplicantFeature(policyId, appCtx.getApplicantId(), appFeats);
                 }
             }
 
+            // 被保人特征：按每个被保人自己的入参需求过滤
             for (InsuredFeatureContext insCtx : polCtx.getInsureds()) {
-                Map<String, Object> insFeats = filterRequested(insCtx.getAcquiredFeatures(), requestedCodes);
+                Set<String> insNeeded = ft != null
+                        ? ft.getNeededFeaturesForInsured(policyId, insCtx.getInsuredId())
+                        : null;
+                Map<String, Object> insFeats = filterRequested(insCtx.getAcquiredFeatures(), insNeeded);
                 if (!insFeats.isEmpty()) {
-                    result.putInsuredFeature(polCtx.getPolicyId(), insCtx.getInsuredId(), insFeats);
+                    result.putInsuredFeature(policyId, insCtx.getInsuredId(), insFeats);
                 }
             }
         }
@@ -599,10 +613,17 @@ public class FeatureExtractionServiceImpl implements FeatureExtractionService {
         return result;
     }
 
+    /**
+     * 按 allowed 集合过滤特征 Map。
+     * allowed 为 null 时不作过滤（无映射场景），allowed 为空集时全部过滤。
+     */
     private static Map<String, Object> filterRequested(Map<String, Object> features,
-                                                        Set<String> requestedCodes) {
+                                                        Set<String> allowed) {
+        if (allowed == null) {
+            return new HashMap<>(features);
+        }
         Map<String, Object> filtered = new HashMap<>(features);
-        filtered.keySet().retainAll(requestedCodes);
+        filtered.keySet().retainAll(allowed);
         return filtered;
     }
 }

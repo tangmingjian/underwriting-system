@@ -12,6 +12,9 @@ public interface FeatureScriptRepository {
 
     Optional<FeatureScript> findByScriptId(String scriptId);
 
+    /** 直读 DB，绕过缓存。 */
+    Optional<FeatureScript> findById(Long id);
+
     List<FeatureScript> findAllEnabled();
 
     void save(FeatureScript script);
