@@ -1,5 +1,6 @@
 package com.insurance.uw.domain.repository;
 
+import com.insurance.uw.common.enums.CalcType;
 import com.insurance.uw.domain.model.entity.FeatureConfig;
 
 import java.util.List;
@@ -13,6 +14,11 @@ public interface FeatureConfigRepository {
     Optional<FeatureConfig> findByFeatureCode(String featureCode);
 
     List<FeatureConfig> findAllEnabled();
+
+    /**
+     * 按 calc_type + status=ACTIVE 双条件查询，走缓存。
+     */
+    List<FeatureConfig> findEnabledByCalcType(CalcType calcType);
 
     List<FeatureConfig> findByFeatureCodes(List<String> featureCodes);
 

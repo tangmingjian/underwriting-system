@@ -1,6 +1,7 @@
 package com.insurance.uw.infrastructure.persistence;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.insurance.uw.common.enums.CalcType;
 import com.insurance.uw.common.enums.FeatureStatus;
 import com.insurance.uw.domain.model.entity.FeatureConfig;
 import com.insurance.uw.domain.repository.FeatureConfigRepository;
@@ -44,6 +45,16 @@ public class FeatureConfigRepositoryImpl implements FeatureConfigRepository {
                 () -> mapper.selectList(
                         new LambdaQueryWrapper<FeatureConfig>()
                                 .eq(FeatureConfig::getStatus, FeatureStatus.ACTIVE)),
+                ttl);
+    }
+
+    @Override
+    public List<FeatureConfig> findEnabledByCalcType(CalcType calcType) {
+        return cache.getList(CacheOps.fcAllKey(), FeatureConfig.class,
+                () -> mapper.selectList(
+                        new LambdaQueryWrapper<FeatureConfig>()
+                                .eq(FeatureConfig::getStatus, FeatureStatus.ACTIVE)
+                                .eq(FeatureConfig::getCalcType, calcType)),
                 ttl);
     }
 

@@ -10,6 +10,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.Properties;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
@@ -71,6 +72,25 @@ public class NacosServiceDiscoveryStrategy implements ServiceDiscoveryStrategy {
         } catch (NacosException e) {
             throw new RuntimeException("NACOS 服务发现失败: service=" + serviceName
                     + ", group=" + group, e);
+        }
+    }
+
+    /**
+     * 预热指定 namespace 的 NamingService，避免首次业务请求承担 SPI 冷启动开销。
+     * 在当前线程中顺序执行，单个 namespace 预热失败不影响其他。
+     */
+    public void warmup(Set<String> namespaces) {
+        if (namespaces.isEmpty()) {
+            log.info("Nacos 预热跳过：未发现 NACOS 类型的 EXTERNAL_API 配置");
+            return;
+        }
+        log.info("Nacos 预热开始, namespaces={}, serverAddr={}", namespaces, serverAddr);
+        for (String ns : namespaces) {
+            try {
+                getOrCreateNamingService(ns);
+            } catch (Exception e) {
+                log.warn("Nacos 预热失败 namespace={}: {}", ns, e.getMessage());
+            }
         }
     }
 

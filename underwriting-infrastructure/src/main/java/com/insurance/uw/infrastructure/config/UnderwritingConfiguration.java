@@ -22,6 +22,10 @@ import com.insurance.uw.domain.service.GroovyMappingEngine;
 import com.insurance.uw.infrastructure.cache.RedisFeatureResultCache;
 import com.insurance.uw.infrastructure.groovy.GroovyMappingEngineImpl;
 import com.insurance.uw.infrastructure.persistence.*;
+import org.apache.hc.client5.http.config.RequestConfig;
+import org.apache.hc.client5.http.impl.classic.HttpClients;
+import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManagerBuilder;
+import org.apache.hc.core5.util.Timeout;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -29,6 +33,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.http.client.HttpComponentsClientHttpRequestFactory;
 import org.springframework.web.client.RestTemplate;
 
 import java.time.Duration;
@@ -49,11 +54,31 @@ public class UnderwritingConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    public RestTemplate restTemplate() {
-        var factory = new org.springframework.http.client.SimpleClientHttpRequestFactory();
-        factory.setConnectTimeout(java.time.Duration.ofSeconds(5));
-        factory.setReadTimeout(java.time.Duration.ofSeconds(30));
-        return new RestTemplate(factory);
+    public RestTemplate restTemplate(
+            @Value("${underwriting.http.connect-timeout:5}") int connectTimeout,
+            @Value("${underwriting.http.connection-request-timeout:3}") int connectionRequestTimeout,
+            @Value("${underwriting.http.read-timeout:30}") int readTimeout,
+            @Value("${underwriting.http.pool.max-total:200}") int maxTotal,
+            @Value("${underwriting.http.pool.max-per-route:50}") int maxPerRoute) {
+
+        var connectionManager = PoolingHttpClientConnectionManagerBuilder.create()
+                .setMaxConnTotal(maxTotal)
+                .setMaxConnPerRoute(maxPerRoute)
+                .build();
+
+        var requestConfig = RequestConfig.custom()
+                .setConnectionRequestTimeout(Timeout.ofSeconds(connectionRequestTimeout))
+                .setConnectTimeout(Timeout.ofSeconds(connectTimeout))
+                .setResponseTimeout(Timeout.ofSeconds(readTimeout))
+                .build();
+
+        var httpClient = HttpClients.custom()
+                .setConnectionManager(connectionManager)
+                .setDefaultRequestConfig(requestConfig)
+                .evictIdleConnections(org.apache.hc.core5.util.TimeValue.ofMinutes(1))
+                .build();
+
+        return new RestTemplate(new HttpComponentsClientHttpRequestFactory(httpClient));
     }
 
     @Bean
