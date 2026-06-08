@@ -3,6 +3,8 @@ package com.insurance.uw.bootstrap;
 import com.insurance.uw.application.service.FeatureConfigApplicationService;
 import com.insurance.uw.application.service.RuleApplicationService;
 import com.insurance.uw.application.feature.handler.CompositeCalcHandler;
+import com.insurance.uw.application.feature.handler.CustomCalcHandler;
+import com.insurance.uw.application.feature.handler.CustomFeatureHandler;
 import com.insurance.uw.application.feature.handler.DatabaseQueryCalcHandler;
 import com.insurance.uw.application.feature.handler.ExpressionCalcHandler;
 import com.insurance.uw.application.feature.handler.ExternalApiCalcHandler;
@@ -85,6 +87,11 @@ public class ApplicationServiceConfiguration {
     @Bean
     public CompositeCalcHandler compositeCalcHandler() {
         return new CompositeCalcHandler();
+    }
+
+    @Bean
+    public CustomCalcHandler customCalcHandler(List<CustomFeatureHandler> customHandlers) {
+        return new CustomCalcHandler(customHandlers);
     }
 
 }

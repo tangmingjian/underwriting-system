@@ -17,6 +17,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -26,6 +27,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.times;
 
 @DisplayName("ExternalApiCalcHandler - 外部 API 调用处理器")
 @ExtendWith(MockitoExtension.class)
@@ -253,6 +255,311 @@ class ExternalApiCalcHandlerTest {
             assertThatThrownBy(() -> handler.execute(new Object(), fc))
                     .isInstanceOf(IllegalArgumentException.class)
                     .hasMessageContaining("出参脚本不存在");
+            }
+        }
+
+    @Nested
+    @DisplayName("分批调用流程 (buildRequest 返回 List<Map>)")
+    class BatchExecution {
+
+        @SuppressWarnings("unchecked")
+        @Test
+        @DisplayName("buildRequest 返回 List<Map> → 循环调用 API → extractFeatures 接收 List<Map>")
+        void buildRequestReturnsList() {
+            FeatureConfig fc = createFeatureConfig();
+            Object ctx = new Object();
+
+            FeatureScript inScript = new FeatureScript();
+            inScript.setScriptId("script-input-001");
+            inScript.setScriptText("def buildRequest(ctx) { return [] }");
+
+            FeatureScript outScript = new FeatureScript();
+            outScript.setScriptId("script-output-001");
+            outScript.setScriptText("def extractFeatures(responses, ctx) { return [:] }");
+
+            when(scriptRepository.findByScriptId("script-input-001"))
+                    .thenReturn(Optional.of(inScript));
+            when(scriptRepository.findByScriptId("script-output-001"))
+                    .thenReturn(Optional.of(outScript));
+
+            // buildRequest returns List<Map> with 3 batches
+            List<Map<String, Object>> batchRequests = List.of(
+                    Map.of("persons", List.of("P001", "P002")),
+                    Map.of("persons", List.of("P003", "P004")),
+                    Map.of("persons", List.of("P005"))
+            );
+            when(groovyEngine.invoke(eq("script-input-001"), any(), eq("buildRequest"), any()))
+                    .thenReturn(batchRequests);
+
+            // Each batch gets its own API call
+            Map<String, Object> response1 = Map.of("scores", List.of(Map.of("id", "P001", "score", 80)));
+            Map<String, Object> response2 = Map.of("scores", List.of(Map.of("id", "P003", "score", 90)));
+            Map<String, Object> response3 = Map.of("scores", List.of(Map.of("id", "P005", "score", 70)));
+            when(apiClient.call(any(ServiceConfig.class), eq(batchRequests.get(0))))
+                    .thenReturn(response1);
+            when(apiClient.call(any(ServiceConfig.class), eq(batchRequests.get(1))))
+                    .thenReturn(response2);
+            when(apiClient.call(any(ServiceConfig.class), eq(batchRequests.get(2))))
+                    .thenReturn(response3);
+
+            // extractFeatures receives List<Map> of all responses
+            Map<String, Map<String, Object>> extracted = Map.of(
+                    "INS001", Map.of("riskScore", 80),
+                    "INS002", Map.of("riskScore", 90),
+                    "INS003", Map.of("riskScore", 70)
+            );
+            when(groovyEngine.invoke(eq("script-output-001"), any(), eq("extractFeatures"), any(List.class), any()))
+                    .thenReturn(extracted);
+
+            Map<String, Object> result = handler.execute(ctx, fc);
+
+            assertThat(result).hasSize(3);
+            assertThat(result).containsKeys("INS001", "INS002", "INS003");
+            verify(apiClient, times(3)).call(any(ServiceConfig.class), any());
+        }
+
+        @SuppressWarnings("unchecked")
+        @Test
+        @DisplayName("空 List → 不调用 API → extractFeatures 接收空列表")
+        void emptyBatchList() {
+            FeatureConfig fc = createFeatureConfig();
+            Object ctx = new Object();
+
+            FeatureScript inScript = new FeatureScript();
+            inScript.setScriptId("script-input-001");
+            inScript.setScriptText("...");
+
+            FeatureScript outScript = new FeatureScript();
+            outScript.setScriptId("script-output-001");
+            outScript.setScriptText("...");
+
+            when(scriptRepository.findByScriptId("script-input-001"))
+                    .thenReturn(Optional.of(inScript));
+            when(scriptRepository.findByScriptId("script-output-001"))
+                    .thenReturn(Optional.of(outScript));
+
+            when(groovyEngine.invoke(eq("script-input-001"), any(), eq("buildRequest"), any()))
+                    .thenReturn(List.of());
+
+            when(groovyEngine.invoke(eq("script-output-001"), any(), eq("extractFeatures"), any(List.class), any()))
+                    .thenReturn(Map.of());
+
+            Map<String, Object> result = handler.execute(ctx, fc);
+
+            assertThat(result).isEmpty();
+            verify(apiClient, times(0)).call(any(), any());
+        }
+    }
+
+    @Nested
+    @DisplayName("executeBatch 降级场景")
+    class ExecuteBatchFallback {
+
+        @SuppressWarnings("unchecked")
+        @Test
+        @DisplayName("某特征 buildRequest 返回 List<Map> → 降级为单独执行")
+        void batchFeatureFallsBackToIndividual() {
+            // fc1: returns Map (mergeable)
+            FeatureConfig fc1 = createFeatureConfig();
+
+            // fc2: returns List<Map> (falls back)
+            FeatureConfig fc2 = new FeatureConfig();
+            fc2.setFeatureCode("CREDIT_SCORE");
+            CalcConfig calcConfig2 = new CalcConfig();
+            ServiceConfig service2 = new ServiceConfig();
+            service2.setServiceName("credit-service");
+            service2.setMethod("POST");
+            calcConfig2.setService(service2);
+            calcConfig2.setInputScriptId("script-input-002");
+            calcConfig2.setOutputScriptId("script-output-002");
+            fc2.setCalcConfig(calcConfig2);
+
+            Object ctx = new Object();
+
+            FeatureScript in1 = new FeatureScript();
+            in1.setScriptId("script-input-001");
+            in1.setScriptText("...");
+
+            FeatureScript out1 = new FeatureScript();
+            out1.setScriptId("script-output-001");
+            out1.setScriptText("...");
+
+            FeatureScript in2 = new FeatureScript();
+            in2.setScriptId("script-input-002");
+            in2.setScriptText("...");
+
+            FeatureScript out2 = new FeatureScript();
+            out2.setScriptId("script-output-002");
+            out2.setScriptText("...");
+
+            when(scriptRepository.findByScriptId("script-input-001"))
+                    .thenReturn(Optional.of(in1));
+            when(scriptRepository.findByScriptId("script-output-001"))
+                    .thenReturn(Optional.of(out1));
+            when(scriptRepository.findByScriptId("script-input-002"))
+                    .thenReturn(Optional.of(in2));
+            when(scriptRepository.findByScriptId("script-output-002"))
+                    .thenReturn(Optional.of(out2));
+
+            // fc1's buildRequest returns Map
+            Map<String, Object> request1 = Map.of("userId", "123");
+            when(groovyEngine.invoke(eq("script-input-001"), any(), eq("buildRequest"), any()))
+                    .thenReturn(request1);
+
+            // fc2's buildRequest returns List<Map> — triggers fallback
+            List<Map<String, Object>> batchRequests = List.of(
+                    Map.of("persons", List.of("P001")),
+                    Map.of("persons", List.of("P002"))
+            );
+            when(groovyEngine.invoke(eq("script-input-002"), any(), eq("buildRequest"), any()))
+                    .thenReturn(batchRequests);
+
+            // fc1's merged API call
+            Map<String, Object> mergedResponse = Map.of("score", 85);
+            when(apiClient.call(any(ServiceConfig.class), eq(request1)))
+                    .thenReturn(mergedResponse);
+
+            // fc2's batch API calls (via execute() fallback)
+            when(apiClient.call(any(ServiceConfig.class), eq(batchRequests.get(0))))
+                    .thenReturn(Map.of("score", 60));
+            when(apiClient.call(any(ServiceConfig.class), eq(batchRequests.get(1))))
+                    .thenReturn(Map.of("score", 70));
+
+            // fc1's extractFeatures
+            when(groovyEngine.invoke(eq("script-output-001"), any(), eq("extractFeatures"), eq(mergedResponse), any()))
+                    .thenReturn(Map.of("INS001", Map.of("riskScore", 85)));
+
+            // fc2's extractFeatures — receives List<Map>
+            when(groovyEngine.invoke(eq("script-output-002"), any(), eq("extractFeatures"), any(List.class), any()))
+                    .thenReturn(Map.of("INS001", Map.of("creditScore", 65)));
+
+            Map<String, Map<String, Object>> result = handler.executeBatch(ctx, List.of(fc1, fc2));
+
+            assertThat(result).hasSize(2);
+            assertThat(result).containsKeys("RISK_SCORE", "CREDIT_SCORE");
+            // 1 merged call for fc1 + 2 batch calls for fc2 = 3 total
+            verify(apiClient, times(3)).call(any(ServiceConfig.class), any());
+        }
+
+        @SuppressWarnings("unchecked")
+        @Test
+        @DisplayName("所有特征都返回 Map → 走原 deepMerge 路径（不变）")
+        void allMapFeaturesUsesMergePath() {
+            FeatureConfig fc1 = createFeatureConfig();
+            FeatureConfig fc2 = new FeatureConfig();
+            fc2.setFeatureCode("CREDIT_SCORE");
+            CalcConfig calcConfig2 = new CalcConfig();
+            ServiceConfig service2 = new ServiceConfig();
+            service2.setServiceName("risk-service");
+            service2.setMethod("POST");
+            calcConfig2.setService(service2);
+            calcConfig2.setInputScriptId("script-input-002");
+            calcConfig2.setOutputScriptId("script-output-002");
+            fc2.setCalcConfig(calcConfig2);
+
+            Object ctx = new Object();
+
+            FeatureScript in1 = new FeatureScript();
+            in1.setScriptId("script-input-001");
+            in1.setScriptText("...");
+            FeatureScript out1 = new FeatureScript();
+            out1.setScriptId("script-output-001");
+            out1.setScriptText("...");
+            FeatureScript in2 = new FeatureScript();
+            in2.setScriptId("script-input-002");
+            in2.setScriptText("...");
+            FeatureScript out2 = new FeatureScript();
+            out2.setScriptId("script-output-002");
+            out2.setScriptText("...");
+
+            when(scriptRepository.findByScriptId("script-input-001"))
+                    .thenReturn(Optional.of(in1));
+            when(scriptRepository.findByScriptId("script-output-001"))
+                    .thenReturn(Optional.of(out1));
+            when(scriptRepository.findByScriptId("script-input-002"))
+                    .thenReturn(Optional.of(in2));
+            when(scriptRepository.findByScriptId("script-output-002"))
+                    .thenReturn(Optional.of(out2));
+
+            when(groovyEngine.invoke(eq("script-input-001"), any(), eq("buildRequest"), any()))
+                    .thenReturn(Map.of("userId", "123"));
+            when(groovyEngine.invoke(eq("script-input-002"), any(), eq("buildRequest"), any()))
+                    .thenReturn(Map.of("userId", "456"));
+
+            Map<String, Object> mergedResponse = Map.of("score", 85);
+            when(apiClient.call(any(ServiceConfig.class), any(Map.class)))
+                    .thenReturn(mergedResponse);
+
+            when(groovyEngine.invoke(eq("script-output-001"), any(), eq("extractFeatures"), any(), any()))
+                    .thenReturn(Map.of("INS001", Map.of("riskScore", 85)));
+            when(groovyEngine.invoke(eq("script-output-002"), any(), eq("extractFeatures"), any(), any()))
+                    .thenReturn(Map.of("INS002", Map.of("creditScore", 90)));
+
+            Map<String, Map<String, Object>> result = handler.executeBatch(ctx, List.of(fc1, fc2));
+
+            assertThat(result).hasSize(2);
+            assertThat(result).containsKeys("RISK_SCORE", "CREDIT_SCORE");
+            // 1 merged call only
+            verify(apiClient, times(1)).call(any(ServiceConfig.class), any(Map.class));
+        }
+
+        @SuppressWarnings("unchecked")
+        @Test
+        @DisplayName("所有特征都返回 List<Map> → 全部降级单独执行")
+        void allBatchFeaturesFallBack() {
+            FeatureConfig fc1 = createFeatureConfig();
+            FeatureConfig fc2 = new FeatureConfig();
+            fc2.setFeatureCode("CREDIT_SCORE");
+            CalcConfig calcConfig2 = new CalcConfig();
+            ServiceConfig service2 = new ServiceConfig();
+            service2.setServiceName("credit-service");
+            service2.setMethod("POST");
+            calcConfig2.setService(service2);
+            calcConfig2.setInputScriptId("script-input-002");
+            calcConfig2.setOutputScriptId("script-output-002");
+            fc2.setCalcConfig(calcConfig2);
+
+            Object ctx = new Object();
+
+            FeatureScript in1 = new FeatureScript();
+            in1.setScriptId("script-input-001");
+            in1.setScriptText("...");
+            FeatureScript out1 = new FeatureScript();
+            out1.setScriptId("script-output-001");
+            out1.setScriptText("...");
+            FeatureScript in2 = new FeatureScript();
+            in2.setScriptId("script-input-002");
+            in2.setScriptText("...");
+            FeatureScript out2 = new FeatureScript();
+            out2.setScriptId("script-output-002");
+            out2.setScriptText("...");
+
+            when(scriptRepository.findByScriptId("script-input-001"))
+                    .thenReturn(Optional.of(in1));
+            when(scriptRepository.findByScriptId("script-output-001"))
+                    .thenReturn(Optional.of(out1));
+            when(scriptRepository.findByScriptId("script-input-002"))
+                    .thenReturn(Optional.of(in2));
+            when(scriptRepository.findByScriptId("script-output-002"))
+                    .thenReturn(Optional.of(out2));
+
+            // Both return List<Map>
+            when(groovyEngine.invoke(eq("script-input-001"), any(), eq("buildRequest"), any()))
+                    .thenReturn(List.of(Map.of("persons", List.of("P001"))));
+            when(groovyEngine.invoke(eq("script-input-002"), any(), eq("buildRequest"), any()))
+                    .thenReturn(List.of(Map.of("persons", List.of("P002"))));
+
+            when(apiClient.call(any(ServiceConfig.class), any(Map.class)))
+                    .thenReturn(Map.of("score", 80));
+
+            when(groovyEngine.invoke(eq("script-output-001"), any(), eq("extractFeatures"), any(List.class), any()))
+                    .thenReturn(Map.of("INS001", Map.of("riskScore", 80)));
+            when(groovyEngine.invoke(eq("script-output-002"), any(), eq("extractFeatures"), any(List.class), any()))
+                    .thenReturn(Map.of("INS002", Map.of("creditScore", 90)));
+
+            Map<String, Map<String, Object>> result = handler.executeBatch(ctx, List.of(fc1, fc2));
+
+            assertThat(result).hasSize(2);
         }
     }
 }

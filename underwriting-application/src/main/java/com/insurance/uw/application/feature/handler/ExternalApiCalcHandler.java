@@ -56,27 +56,28 @@ public class ExternalApiCalcHandler implements FeatureCalcHandler {
         String outputScriptId = calcConfig.getOutputScriptId();
         FeatureScript outScript = loadScript(outputScriptId, fc.getFeatureCode(), localCache, "出参脚本");
 
-        // 3. Groovy buildRequest
-        Map<String, Object> request = (Map<String, Object>) groovyEngine.invoke(
+        // 3. Groovy buildRequest + 类型检测
+        Object rawRequest = groovyEngine.invoke(
                 inputScriptId, inScript.getScriptText(), "buildRequest", ctx);
 
-        // 4. HTTP 调用
-        Map<String, Object> response = apiClient.call(serviceConfig, request);
-
-        // 5. Groovy extractFeatures
-        Map<String, Map<String, Object>> featureResults = (Map<String, Map<String, Object>>) groovyEngine.invoke(
-                outputScriptId, outScript.getScriptText(), "extractFeatures", response, ctx);
-
-        // 6. 用 featureCode 包裹每个 targetId 的结果
-        Map<String, Object> result = new HashMap<>();
-        if (featureResults != null) {
-            featureResults.forEach((targetId, featureData) -> {
-                Map<String, Object> wrapped = new HashMap<>();
-                wrapped.put(fc.getFeatureCode(), featureData);
-                result.put(targetId, wrapped);
-            });
+        // 4. HTTP 调用：Map → 单次调用，List<Map> → 分批调用
+        final Object rawResponse;
+        if (rawRequest instanceof List) {
+            // 分批调用：循环调用每个子请求，收集响应列表
+            List<Map<String, Object>> batchRequests = (List<Map<String, Object>>) rawRequest;
+            List<Map<String, Object>> batchResponses = new ArrayList<>();
+            for (Map<String, Object> req : batchRequests) {
+                batchResponses.add(apiClient.call(serviceConfig, req));
+            }
+            rawResponse = batchResponses;
+        } else {
+            // 单次调用（向后兼容）
+            Map<String, Object> request = (Map<String, Object>) rawRequest;
+            rawResponse = apiClient.call(serviceConfig, request);
         }
-        return result;
+
+        // 5. Groovy extractFeatures + 用 featureCode 包裹
+        return invokeAndDispatch(fc, outScript, rawResponse, ctx);
     }
 
     @SuppressWarnings("unchecked")
@@ -89,10 +90,12 @@ public class ExternalApiCalcHandler implements FeatureCalcHandler {
         // 1. 取第一个特征的 ServiceConfig 用于实际 HTTP 调用
         ServiceConfig serviceConfig = features.get(0).getCalcConfig().getService();
 
-        // 2. 对每个特征加载脚本、拼装请求（请求级本地缓存，避免同 scriptId 重复查 DB/Redis）
+        // 2. 加载脚本、拼装请求，分离单请求（可合并）和分批请求（降级单独执行）
         Map<String, Object> mergedRequest = null;
-        List<FeatureScript> outputScripts = new ArrayList<>();
+        List<FeatureConfig> singleFeatures = new ArrayList<>();
+        List<FeatureScript> singleOutScripts = new ArrayList<>();
         Map<String, FeatureScript> localCache = new HashMap<>();
+        Map<String, Map<String, Object>> aggregated = new LinkedHashMap<>();
 
         for (FeatureConfig fc : features) {
             CalcConfig calcConfig = fc.getCalcConfig();
@@ -101,42 +104,34 @@ public class ExternalApiCalcHandler implements FeatureCalcHandler {
             String inputScriptId = calcConfig.getInputScriptId();
             FeatureScript inScript = loadScript(inputScriptId, fc.getFeatureCode(), localCache, "入参脚本");
 
-            // 加载出参脚本（暂存，稍后逐特征 extractFeatures）
+            // 加载出参脚本
             String outputScriptId = calcConfig.getOutputScriptId();
             FeatureScript outScript = loadScript(outputScriptId, fc.getFeatureCode(), localCache, "出参脚本");
-            outputScripts.add(outScript);
 
-            // Groovy buildRequest
-            Map<String, Object> request = (Map<String, Object>) groovyEngine.invoke(
+            // Groovy buildRequest + 类型检测
+            Object rawRequest = groovyEngine.invoke(
                     inputScriptId, inScript.getScriptText(), "buildRequest", ctx);
 
-            // 深度合并
-            mergedRequest = deepMerge(mergedRequest, request);
+            if (rawRequest instanceof List) {
+                // 返回 List<Map> 的特征降级为单独执行
+                aggregated.put(fc.getFeatureCode(), execute(ctx, fc));
+            } else {
+                Map<String, Object> request = (Map<String, Object>) rawRequest;
+                mergedRequest = deepMerge(mergedRequest, request);
+                singleFeatures.add(fc);
+                singleOutScripts.add(outScript);
+            }
         }
 
-        // 3. 单次 HTTP 调用
-        Map<String, Object> response = apiClient.call(serviceConfig, mergedRequest);
+        // 3. 合并路径：单次 HTTP 调用 + 逐特征 extractFeatures
+        if (mergedRequest != null) {
+            Map<String, Object> response = apiClient.call(serviceConfig, mergedRequest);
 
-        // 4. 对每个特征调用 extractFeatures，聚合结果
-        Map<String, Map<String, Object>> aggregated = new LinkedHashMap<>();
-        for (int i = 0; i < features.size(); i++) {
-            FeatureConfig fc = features.get(i);
-            FeatureScript outScript = outputScripts.get(i);
-            CalcConfig calcConfig = fc.getCalcConfig();
-
-            Map<String, Map<String, Object>> featureResults = (Map<String, Map<String, Object>>) groovyEngine.invoke(
-                    calcConfig.getOutputScriptId(), outScript.getScriptText(), "extractFeatures", response, ctx);
-
-            // 用 featureCode 包裹每个 targetId 的结果
-            Map<String, Object> wrapped = new HashMap<>();
-            if (featureResults != null) {
-                featureResults.forEach((targetId, featureData) -> {
-                    Map<String, Object> inner = new HashMap<>();
-                    inner.put(fc.getFeatureCode(), featureData);
-                    wrapped.put(targetId, inner);
-                });
+            for (int i = 0; i < singleFeatures.size(); i++) {
+                FeatureConfig fc = singleFeatures.get(i);
+                FeatureScript outScript = singleOutScripts.get(i);
+                aggregated.put(fc.getFeatureCode(), invokeAndDispatch(fc, outScript, response, ctx));
             }
-            aggregated.put(fc.getFeatureCode(), wrapped);
         }
 
         return aggregated;
@@ -151,6 +146,29 @@ public class ExternalApiCalcHandler implements FeatureCalcHandler {
                 scriptRepository.findByScriptId(id)
                         .orElseThrow(() -> new IllegalArgumentException(
                                 scriptLabel + "不存在: " + id + "（特征: " + featureCode + "）")));
+    }
+
+    /**
+     * 调用 extractFeatures 并将结果用 featureCode 包裹。
+     * rawResponse 为 Map（单次响应）或 List&lt;Map&gt;（分批响应列表），由脚本自行处理。
+     */
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> invokeAndDispatch(FeatureConfig fc, FeatureScript outScript,
+                                                   Object rawResponse, Object ctx) {
+        CalcConfig calcConfig = fc.getCalcConfig();
+
+        Map<String, Map<String, Object>> featureResults = (Map<String, Map<String, Object>>) groovyEngine.invoke(
+                calcConfig.getOutputScriptId(), outScript.getScriptText(), "extractFeatures", rawResponse, ctx);
+
+        Map<String, Object> wrapped = new HashMap<>();
+        if (featureResults != null) {
+            featureResults.forEach((targetId, featureData) -> {
+                Map<String, Object> inner = new HashMap<>();
+                inner.put(fc.getFeatureCode(), featureData);
+                wrapped.put(targetId, inner);
+            });
+        }
+        return wrapped;
     }
 
     /**

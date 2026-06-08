@@ -18,6 +18,9 @@ public enum CalcType {
     DATABASE_QUERY,
 
     /** 复合计算：组合多个子特征 */
-    COMPOSITE
+    COMPOSITE,
+
+    /** 自定义 Java 实现：直接编写 Java 类实现全部逻辑 */
+    CUSTOM
 
 }
