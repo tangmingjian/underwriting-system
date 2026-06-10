@@ -27,6 +27,10 @@ public class CalcConfig {
     @JsonProperty("output_script_id")
     private String outputScriptId;
 
+    /** 表达式计算脚本标识（EXPRESSION 类型） */
+    @JsonProperty("expression_script_id")
+    private String expressionScriptId;
+
     /** 入参取数路径（PARAM_MAPPING 类型），格式 {entityType}.{fieldName}，如 insured.age */
     @JsonProperty("source")
     private String source;
@@ -44,6 +48,9 @@ public class CalcConfig {
 
     public String getSource() { return source; }
     public void setSource(String source) { this.source = source; }
+
+    public String getExpressionScriptId() { return expressionScriptId; }
+    public void setExpressionScriptId(String expressionScriptId) { this.expressionScriptId = expressionScriptId; }
 
     // ==================== JSON 序列化/反序列化工具方法 ====================
 

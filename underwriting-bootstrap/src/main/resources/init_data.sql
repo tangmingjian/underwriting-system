@@ -384,6 +384,23 @@ INSERT IGNORE INTO t_underwriting_rule (rule_code, rule_name, rule_type, eval_ty
 -- 无需调用下游 API，无需 feature_script
 -- ============================================================
 
+-- ============================================================
+-- EXPRESSION 示例：年龄计算脚本（基于生日和生效日）
+-- ============================================================
+
+INSERT IGNORE INTO t_feature_script (script_id, script_name, script_type, script_text, version, status)
+VALUES ('computeAge', '年龄计算', 'EXPRESSION',
+'import java.time.LocalDate
+import java.time.Period
+
+Map evaluate(InsuredFeatureContext ctx) {
+    def insured = ctx.insured
+    def effectiveDate = ctx.policy.effectiveDate
+    if (insured?.birthday == null || effectiveDate == null) return [age: null]
+    def age = Period.between(insured.birthday, effectiveDate).years
+    return [age: age]
+}', 1, 'ACTIVE');
+
 -- 被保人年龄
 INSERT IGNORE INTO t_feature_config (
     feature_code, feature_name, category, data_type, calc_type,

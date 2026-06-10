@@ -30,7 +30,7 @@ CREATE TABLE IF NOT EXISTS t_feature_script (
     id          BIGINT AUTO_INCREMENT PRIMARY KEY,
     script_id   VARCHAR(100) NOT NULL COMMENT '脚本标识（calc_config中引用的input_script_id / output_script_id）',
     script_name VARCHAR(200) COMMENT '脚本名称',
-    script_type ENUM('INPUT','OUTPUT') NOT NULL COMMENT '脚本类型: INPUT=入参映射, OUTPUT=出参映射',
+    script_type ENUM('INPUT','OUTPUT','EXPRESSION') NOT NULL COMMENT '脚本类型: INPUT=入参映射, OUTPUT=出参映射, EXPRESSION=表达式计算',
     script_text MEDIUMTEXT   NOT NULL COMMENT 'Groovy脚本全文',
     version     INT          DEFAULT 1 COMMENT '版本号',
     status      ENUM('DRAFT','ACTIVE','DEPRECATED') DEFAULT 'DRAFT' COMMENT '状态',

@@ -117,8 +117,10 @@ public class ApplicationServiceConfiguration {
     }
 
     @Bean
-    public ExpressionCalcHandler expressionCalcHandler() {
-        return new ExpressionCalcHandler();
+    public ExpressionCalcHandler expressionCalcHandler(
+            FeatureScriptRepository scriptRepository,
+            GroovyMappingEngine groovyEngine) {
+        return new ExpressionCalcHandler(scriptRepository, groovyEngine);
     }
 
     @Bean

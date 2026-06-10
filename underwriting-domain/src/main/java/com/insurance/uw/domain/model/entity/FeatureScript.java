@@ -61,8 +61,9 @@ public class FeatureScript {
     // ==================== 枚举 ====================
 
     public enum ScriptType {
-        INPUT,   // 入参映射
-        OUTPUT   // 出参映射
+        INPUT,       // 入参映射
+        OUTPUT,      // 出参映射
+        EXPRESSION   // 表达式计算
     }
 
 }
