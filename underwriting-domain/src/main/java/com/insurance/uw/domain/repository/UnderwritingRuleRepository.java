@@ -1,6 +1,7 @@
 package com.insurance.uw.domain.repository;
 
 import com.insurance.uw.domain.model.entity.UnderwritingRule;
+import com.insurance.uw.domain.model.entity.UnderwritingRuleHistory;
 
 import java.util.List;
 import java.util.Optional;
@@ -21,5 +22,7 @@ public interface UnderwritingRuleRepository {
     void update(UnderwritingRule rule);
 
     void delete(Long id);
+
+    List<UnderwritingRuleHistory> findHistoryByRuleCode(String ruleCode);
 
 }

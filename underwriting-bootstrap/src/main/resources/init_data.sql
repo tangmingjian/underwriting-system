@@ -350,33 +350,33 @@ INSERT IGNORE INTO t_feature_config (
 -- ============================================================
 
 -- 被保人信用评分 >= 600（从语义 Map 中取 score 子字段）
-INSERT IGNORE INTO t_underwriting_rule (rule_code, rule_name, rule_type, expression, feature_codes, product_code, priority, status) VALUES
-('RULE_CREDIT_001', '信用评分达标', 'INSURED',
- '#root[''ins.creditScore''][''score''] >= 600',
+INSERT IGNORE INTO t_underwriting_rule (rule_code, rule_name, rule_type, eval_type, expression, feature_codes, product_code, priority, status) VALUES
+('RULE_CREDIT_001', '信用评分达标', 'INSURED', 'CONDITION_LIST',
+ '{"logic":"AND","items":[{"feature":"ins.creditScore.score","operator":"GTE","value":600}]}',
  'ins.creditScore', 'HEALTH_A_001', 10, 1);
 
 -- 反欺诈风险评分 < 80（从语义 Map 中取 riskScore 子字段）
-INSERT IGNORE INTO t_underwriting_rule (rule_code, rule_name, rule_type, expression, feature_codes, product_code, priority, status) VALUES
-('RULE_FRAUD_001', '反欺诈风险可控', 'INSURED',
- '#root[''ord.fraudRiskScore''][''riskScore''] < 80',
+INSERT IGNORE INTO t_underwriting_rule (rule_code, rule_name, rule_type, eval_type, expression, feature_codes, product_code, priority, status) VALUES
+('RULE_FRAUD_001', '反欺诈风险可控', 'INSURED', 'CONDITION_LIST',
+ '{"logic":"AND","items":[{"feature":"ord.fraudRiskScore.riskScore","operator":"LT","value":80}]}',
  'ord.fraudRiskScore', 'HEALTH_A_001', 5, 1);
 
 -- 职业风险等级 ≤ 3（从语义 Map 中取 riskClass 子字段）
-INSERT IGNORE INTO t_underwriting_rule (rule_code, rule_name, rule_type, expression, feature_codes, product_code, priority, status) VALUES
-('RULE_OCCUPATION_001', '职业风险等级检查', 'INSURED',
- '#root[''ins.occupationRisk''][''riskClass''] <= 3',
+INSERT IGNORE INTO t_underwriting_rule (rule_code, rule_name, rule_type, eval_type, expression, feature_codes, product_code, priority, status) VALUES
+('RULE_OCCUPATION_001', '职业风险等级检查', 'INSURED', 'CONDITION_LIST',
+ '{"logic":"AND","items":[{"feature":"ins.occupationRisk.riskClass","operator":"LTE","value":3}]}',
  'ins.occupationRisk', 'ACCIDENT_B_002', 20, 1);
 
 -- 投保人收入核验必须通过（从语义 Map 中取 incomeVerified 子字段）
-INSERT IGNORE INTO t_underwriting_rule (rule_code, rule_name, rule_type, expression, feature_codes, product_code, priority, status) VALUES
-('RULE_INCOME_001', '投保人收入核验', 'APPLICANT',
- '#root[''app.incomeVerified''][''incomeVerified''] == true',
+INSERT IGNORE INTO t_underwriting_rule (rule_code, rule_name, rule_type, eval_type, expression, feature_codes, product_code, priority, status) VALUES
+('RULE_INCOME_001', '投保人收入核验', 'APPLICANT', 'CONDITION_LIST',
+ '{"logic":"AND","items":[{"feature":"app.incomeVerified.incomeVerified","operator":"EQ","value":true}]}',
  'app.incomeVerified', 'HEALTH_A_001', 15, 1);
 
 -- 保额上限检查（从语义 Map 中取 maxSumAssured 子字段）
-INSERT IGNORE INTO t_underwriting_rule (rule_code, rule_name, rule_type, expression, feature_codes, product_code, priority, status) VALUES
-('RULE_PRODUCT_001', '保额上限检查', 'POLICY',
- '#root[''pol.maxSumAssured''][''maxSumAssured''] > 0',
+INSERT IGNORE INTO t_underwriting_rule (rule_code, rule_name, rule_type, eval_type, expression, feature_codes, product_code, priority, status) VALUES
+('RULE_PRODUCT_001', '保额上限检查', 'POLICY', 'CONDITION_LIST',
+ '{"logic":"AND","items":[{"feature":"pol.maxSumAssured.maxSumAssured","operator":"GT","value":0}]}',
  'pol.maxSumAssured', 'ACCIDENT_B_002', 25, 1);
 
 -- ============================================================
@@ -444,15 +444,15 @@ INSERT IGNORE INTO t_feature_config (
 -- ============================================================
 
 -- 被保人年龄 ≥ 18
-INSERT IGNORE INTO t_underwriting_rule (rule_code, rule_name, rule_type, expression, feature_codes, product_code, priority, status) VALUES
-('RULE_AGE_001', '被保人成年检查', 'INSURED',
- '#root[''ins.age''] >= 18',
+INSERT IGNORE INTO t_underwriting_rule (rule_code, rule_name, rule_type, eval_type, expression, feature_codes, product_code, priority, status) VALUES
+('RULE_AGE_001', '被保人成年检查', 'INSURED', 'CONDITION_LIST',
+ '{"logic":"AND","items":[{"feature":"ins.age","operator":"GTE","value":18}]}',
  'ins.age', 'HEALTH_A_001', 10, 1);
 
 -- 被保人性别有效
-INSERT IGNORE INTO t_underwriting_rule (rule_code, rule_name, rule_type, expression, feature_codes, product_code, priority, status) VALUES
-('RULE_GENDER_001', '被保人性别有效性', 'INSURED',
- '#root[''ins.gender''] != null',
+INSERT IGNORE INTO t_underwriting_rule (rule_code, rule_name, rule_type, eval_type, expression, feature_codes, product_code, priority, status) VALUES
+('RULE_GENDER_001', '被保人性别有效性', 'INSURED', 'CONDITION_LIST',
+ '{"logic":"AND","items":[{"feature":"ins.gender","operator":"IS_NOT_NULL"}]}',
  'ins.gender', 'HEALTH_A_001', 10, 1);
 
 -- ============================================================
@@ -537,14 +537,14 @@ INSERT IGNORE INTO t_feature_config (
 );
 
 -- 对应规则
-INSERT IGNORE INTO t_underwriting_rule (rule_code, rule_name, rule_type, expression, feature_codes, product_code, priority, status) VALUES
-('RULE_BATCH_RISK_001', '风险评分达标', 'INSURED',
- '#root[''RISK_SCORE''] >= 60',
+INSERT IGNORE INTO t_underwriting_rule (rule_code, rule_name, rule_type, eval_type, expression, feature_codes, product_code, priority, status) VALUES
+('RULE_BATCH_RISK_001', '风险评分达标', 'INSURED', 'CONDITION_LIST',
+ '{"logic":"AND","items":[{"feature":"RISK_SCORE","operator":"GTE","value":60}]}',
  'RISK_SCORE', 'HEALTH_A_001', 8, 1);
 
-INSERT IGNORE INTO t_underwriting_rule (rule_code, rule_name, rule_type, expression, feature_codes, product_code, priority, status) VALUES
-('RULE_BATCH_FRAUD_001', '反欺诈检查通过', 'INSURED',
- '#root[''FRAUD_CHECK''] < 80',
+INSERT IGNORE INTO t_underwriting_rule (rule_code, rule_name, rule_type, eval_type, expression, feature_codes, product_code, priority, status) VALUES
+('RULE_BATCH_FRAUD_001', '反欺诈检查通过', 'INSURED', 'CONDITION_LIST',
+ '{"logic":"AND","items":[{"feature":"FRAUD_CHECK","operator":"LT","value":80}]}',
  'FRAUD_CHECK', 'HEALTH_A_001', 7, 1);
 
 -- ============================================================

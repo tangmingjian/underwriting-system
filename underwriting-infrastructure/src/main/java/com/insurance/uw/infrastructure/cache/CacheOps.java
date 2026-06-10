@@ -167,9 +167,12 @@ public class CacheOps {
 
     // ==================== Key 构建 ====================
 
-    public static final String PREFIX_FC     = "uw:fc:";
-    public static final String PREFIX_RULE   = "uw:rule:";
-    public static final String PREFIX_SCRIPT = "uw:script:";
+    public static final String PREFIX_FC            = "uw:fc:";
+    public static final String PREFIX_RULE          = "uw:rule:";
+    public static final String PREFIX_RULE_HISTORY   = "uw:rule:history:";
+    public static final String PREFIX_SCRIPT        = "uw:script:";
+    public static final String PREFIX_CDT           = "uw:cdt:";
+    public static final String PREFIX_SC            = "uw:sc:";
 
     public static String fcKey(String featureCode)        { return PREFIX_FC + featureCode; }
     public static String fcAllKey()                        { return PREFIX_FC + "__ALL__"; }
@@ -177,5 +180,10 @@ public class CacheOps {
     public static String ruleAllKey()                      { return PREFIX_RULE + "__ALL__"; }
     public static String scriptKey(String scriptId)        { return PREFIX_SCRIPT + scriptId; }
     public static String scriptAllKey()                    { return PREFIX_SCRIPT + "__ALL__"; }
+    public static String cdtKey(String tableCode)          { return PREFIX_CDT + tableCode; }
+    public static String cdtAllKey()                       { return PREFIX_CDT + "__ALL__"; }
+    public static String scKey(String scorecardCode)       { return PREFIX_SC + scorecardCode; }
+    public static String scAllKey()                        { return PREFIX_SC + "__ALL__"; }
+    public static String ruleHistoryKey(String ruleCode)    { return PREFIX_RULE_HISTORY + ruleCode; }
 
 }

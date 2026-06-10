@@ -1,16 +1,17 @@
 package com.insurance.uw.application.service;
 
+import com.insurance.uw.application.rule.engine.RuleEngineFactory;
+import com.insurance.uw.common.enums.EvalType;
 import com.insurance.uw.common.enums.RuleType;
 import com.insurance.uw.domain.context.ApplicantFeatureContext;
 import com.insurance.uw.domain.context.InsuredFeatureContext;
 import com.insurance.uw.domain.context.PolicyFeatureContext;
 import com.insurance.uw.domain.model.entity.Order;
 import com.insurance.uw.domain.model.entity.UnderwritingRule;
+import com.insurance.uw.domain.model.entity.UnderwritingRuleHistory;
 import com.insurance.uw.domain.repository.UnderwritingRuleRepository;
 import com.insurance.uw.sdk.feature.FeatureExtractionRequest;
 import com.insurance.uw.sdk.feature.FeatureExtractionResult;
-import org.springframework.expression.ExpressionParser;
-import org.springframework.expression.spel.standard.SpelExpressionParser;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -21,10 +22,12 @@ import java.util.stream.Collectors;
 public class RuleApplicationService {
 
     private final UnderwritingRuleRepository repository;
-    private final ExpressionParser parser = new SpelExpressionParser();
+    private final RuleEngineFactory ruleEngineFactory;
 
-    public RuleApplicationService(UnderwritingRuleRepository repository) {
+    public RuleApplicationService(UnderwritingRuleRepository repository,
+                                   RuleEngineFactory ruleEngineFactory) {
         this.repository = repository;
+        this.ruleEngineFactory = ruleEngineFactory;
     }
 
     // ==================== 规则管理 ====================
@@ -47,6 +50,10 @@ public class RuleApplicationService {
 
     public void delete(Long id) {
         repository.delete(id);
+    }
+
+    public List<UnderwritingRuleHistory> getHistory(String ruleCode) {
+        return repository.findHistoryByRuleCode(ruleCode);
     }
 
     // ==================== 特征请求构建 ====================
@@ -134,7 +141,8 @@ public class RuleApplicationService {
                     for (com.insurance.uw.domain.model.entity.Insured insured : policy.getInsureds()) {
                         Map<String, Object> features = collectForInsured(result,
                                 insured.getId(), policy.getId(), applicantId);
-                        boolean passed = evaluateExpression(rule.getExpression(), features);
+                        boolean passed = evaluateExpression(rule.getExpression(), features,
+                                rule.getEvalType());
                         results.add(new UnderwritingResult(
                                 "INSURED", insured.getId(), insured.getName(),
                                 rule.getRuleCode(), rule.getRuleName(), passed));
@@ -147,7 +155,8 @@ public class RuleApplicationService {
                     if (policy.getApplicant() == null) continue;
                     String applicantId = policy.getApplicant().getId();
                     Map<String, Object> features = collectForApplicant(result, applicantId, policy.getId());
-                    boolean passed = evaluateExpression(rule.getExpression(), features);
+                    boolean passed = evaluateExpression(rule.getExpression(), features,
+                            rule.getEvalType());
                     results.add(new UnderwritingResult(
                             "APPLICANT", applicantId, policy.getApplicant().getName(),
                             rule.getRuleCode(), rule.getRuleName(), passed));
@@ -157,7 +166,8 @@ public class RuleApplicationService {
             case POLICY:
                 for (com.insurance.uw.domain.model.entity.Policy policy : order.getPolicies()) {
                     Map<String, Object> features = collectForPolicy(result, policy.getId());
-                    boolean passed = evaluateExpression(rule.getExpression(), features);
+                    boolean passed = evaluateExpression(rule.getExpression(), features,
+                            rule.getEvalType());
                     results.add(new UnderwritingResult(
                             "POLICY", policy.getId(), null,
                             rule.getRuleCode(), rule.getRuleName(), passed));
@@ -166,7 +176,8 @@ public class RuleApplicationService {
 
             case ORDER:
                 Map<String, Object> orderFeatures = collectForOrder(result);
-                boolean orderPassed = evaluateExpression(rule.getExpression(), orderFeatures);
+                boolean orderPassed = evaluateExpression(rule.getExpression(), orderFeatures,
+                        rule.getEvalType());
                 results.add(new UnderwritingResult(
                         "ORDER", order.getId(), null,
                         rule.getRuleCode(), rule.getRuleName(), orderPassed));
@@ -176,8 +187,9 @@ public class RuleApplicationService {
         return results;
     }
 
-    private boolean evaluateExpression(String expression, Map<String, Object> features) {
-        return Boolean.TRUE.equals(parser.parseExpression(expression).getValue(features, Boolean.class));
+    private boolean evaluateExpression(String expression, Map<String, Object> features,
+                                        EvalType evalType) {
+        return ruleEngineFactory.evaluate(evalType, features, expression);
     }
 
     // ==================== 特征收集（从 FeatureExtractionResult 扁平 map） ====================

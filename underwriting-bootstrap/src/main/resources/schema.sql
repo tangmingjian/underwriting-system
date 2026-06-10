@@ -46,13 +46,64 @@ CREATE TABLE IF NOT EXISTS t_underwriting_rule (
     rule_code     VARCHAR(50)   NOT NULL UNIQUE COMMENT '规则编码',
     rule_name     VARCHAR(100)  COMMENT '规则名称',
     rule_type     VARCHAR(20)   NOT NULL COMMENT '规则类型: INSURED / APPLICANT / POLICY / ORDER',
-    expression    VARCHAR(1000) NOT NULL COMMENT 'SpEL表达式',
+    eval_type     VARCHAR(30)   DEFAULT 'CONDITION_LIST' COMMENT '评估类型: CONDITION_LIST / CROSS_DECISION_TABLE / SCORECARD',
+    expression    VARCHAR(1000) NOT NULL COMMENT '规则JSON DSL配置',
     feature_codes VARCHAR(500)  COMMENT '依赖的特征码，逗号分隔',
     product_code  VARCHAR(50)   COMMENT '适用产品码，关联 t_feature_config 中的产品',
     priority      INT           DEFAULT 0,
     status        TINYINT       DEFAULT 1 COMMENT '1:启用 0:停用',
+    version       INT           DEFAULT 1 COMMENT '当前版本号',
     create_time   DATETIME      DEFAULT CURRENT_TIMESTAMP,
     update_time   DATETIME      DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+-- 核保规则历史归档表
+CREATE TABLE IF NOT EXISTS t_underwriting_rule_history (
+    history_id    BIGINT AUTO_INCREMENT PRIMARY KEY,
+    id            BIGINT        COMMENT '原规则ID',
+    rule_code     VARCHAR(50)   NOT NULL COMMENT '规则编码',
+    rule_name     VARCHAR(100)  COMMENT '规则名称',
+    rule_type     VARCHAR(20)   NOT NULL COMMENT '规则类型: INSURED / APPLICANT / POLICY / ORDER',
+    eval_type     VARCHAR(30)   COMMENT '评估类型',
+    expression    VARCHAR(1000) NOT NULL COMMENT '规则JSON DSL配置',
+    feature_codes VARCHAR(500)  COMMENT '依赖的特征码，逗号分隔',
+    product_code  VARCHAR(50)   COMMENT '适用产品码',
+    priority      INT           DEFAULT 0,
+    status        TINYINT       DEFAULT 1 COMMENT '1:启用 0:停用',
+    version       INT           DEFAULT 1 COMMENT '版本号',
+    change_type   VARCHAR(20)   NOT NULL COMMENT '变更类型: CREATE / UPDATE / DELETE',
+    changed_at    DATETIME      NOT NULL COMMENT '归档时间',
+    create_time   DATETIME      COMMENT '原记录创建时间',
+    update_time   DATETIME      COMMENT '原记录更新时间',
+    INDEX idx_rule_history_code (rule_code),
+    INDEX idx_rule_history_rule_id (id)
+);
+
+-- 交叉决策表
+CREATE TABLE IF NOT EXISTS t_cross_decision_table (
+    id              BIGINT AUTO_INCREMENT PRIMARY KEY,
+    table_code      VARCHAR(50)   NOT NULL UNIQUE COMMENT '决策表编码',
+    table_name      VARCHAR(100)  COMMENT '决策表名称',
+    row_feature     VARCHAR(100)  COMMENT '行特征码',
+    col_feature     VARCHAR(100)  COMMENT '列特征码',
+    cells           JSON          COMMENT '单元格JSON: [{"row":"val","col":"val","result":true}]',
+    default_result  TINYINT       DEFAULT 0 COMMENT '默认结果: 1=true 0=false',
+    status          TINYINT       DEFAULT 1 COMMENT '1:启用 0:停用',
+    create_time     DATETIME      DEFAULT CURRENT_TIMESTAMP,
+    update_time     DATETIME      DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+-- 评分卡配置表
+CREATE TABLE IF NOT EXISTS t_scorecard_config (
+    id              BIGINT AUTO_INCREMENT PRIMARY KEY,
+    scorecard_code  VARCHAR(50)   NOT NULL UNIQUE COMMENT '评分卡编码',
+    scorecard_name  VARCHAR(100)  COMMENT '评分卡名称',
+    dimensions      JSON          COMMENT '评分维度JSON',
+    scoring_formula VARCHAR(500)  COMMENT '评分公式，如 "{dim1}*0.6+{dim2}*0.4"',
+    buckets         JSON          COMMENT '分桶JSON: [{"min":0,"max":60,"result":false}]',
+    status          TINYINT       DEFAULT 1 COMMENT '1:启用 0:停用',
+    create_time     DATETIME      DEFAULT CURRENT_TIMESTAMP,
+    update_time     DATETIME      DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
 
 -- =============================================

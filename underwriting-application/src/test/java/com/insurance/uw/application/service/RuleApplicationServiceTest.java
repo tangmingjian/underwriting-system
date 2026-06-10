@@ -1,7 +1,16 @@
 package com.insurance.uw.application.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.insurance.uw.application.rule.engine.ConditionListEvaluator;
+import com.insurance.uw.application.rule.engine.CrossDecisionTableEvaluator;
+import com.insurance.uw.application.rule.engine.RuleEngineFactory;
+import com.insurance.uw.application.rule.engine.ScorecardEvaluator;
+import com.insurance.uw.common.enums.EvalType;
 import com.insurance.uw.common.enums.RuleType;
 import com.insurance.uw.domain.model.entity.*;
+import com.insurance.uw.domain.repository.CrossDecisionTableRepository;
+import com.insurance.uw.domain.repository.ScorecardConfigRepository;
 import com.insurance.uw.domain.repository.UnderwritingRuleRepository;
 import com.insurance.uw.sdk.feature.FeatureExtractionRequest;
 import com.insurance.uw.sdk.feature.FeatureExtractionResult;
@@ -25,13 +34,23 @@ class RuleApplicationServiceTest {
     @Mock
     private UnderwritingRuleRepository ruleRepository;
 
+    @Mock
+    private CrossDecisionTableRepository cdtRepository;
+
+    @Mock
+    private ScorecardConfigRepository scRepository;
+
     private RuleApplicationService service;
     private Order order;
     private FeatureExtractionResult featResult;
 
     @BeforeEach
     void setUp() {
-        service = new RuleApplicationService(ruleRepository);
+        ConditionListEvaluator cle = new ConditionListEvaluator(new ObjectMapper());
+        CrossDecisionTableEvaluator cdte = new CrossDecisionTableEvaluator(cdtRepository, new ObjectMapper());
+        ScorecardEvaluator se = new ScorecardEvaluator(scRepository, new ObjectMapper());
+        RuleEngineFactory factory = new RuleEngineFactory(cle, cdte, se);
+        service = new RuleApplicationService(ruleRepository, factory);
 
         Product product = new Product("PROD001", "测试产品");
         Applicant applicant = new Applicant("APP001", "张三", 35, "M");
@@ -49,6 +68,7 @@ class RuleApplicationServiceTest {
         rule.setRuleCode(code);
         rule.setRuleName(name);
         rule.setRuleType(type);
+        rule.setEvalType(EvalType.CONDITION_LIST);
         rule.setExpression(expr);
         rule.setPriority(10);
         rule.setStatus(1);
@@ -115,7 +135,8 @@ class RuleApplicationServiceTest {
         @DisplayName("listAll → 返回所有启用规则")
         void listAll() {
             List<UnderwritingRule> rules = List.of(
-                    createRule("R1", "规则1", RuleType.INSURED, "#root['age'] > 18")
+                    createRule("R1", "规则1", RuleType.INSURED,
+                            "{\"logic\":\"AND\",\"items\":[{\"feature\":\"age\",\"operator\":\"GT\",\"value\":18}]}")
             );
             when(ruleRepository.findAllEnabled()).thenReturn(rules);
 
@@ -147,7 +168,7 @@ class RuleApplicationServiceTest {
             featResult.putInsuredFeature("POL001", "INS002", Map.of("age", 28));
 
             UnderwritingRule rule = createRule("R1", "年龄>=30", RuleType.INSURED,
-                    "#root['age'] >= 30");
+                    "{\"logic\":\"AND\",\"items\":[{\"feature\":\"age\",\"operator\":\"GTE\",\"value\":30}]}");
             when(ruleRepository.findAllEnabled()).thenReturn(List.of(rule));
 
             var results = service.evaluate(order, featResult);
@@ -164,7 +185,7 @@ class RuleApplicationServiceTest {
             featResult.putInsuredFeature("POL001", "INS002", Map.of("age", 25));
 
             UnderwritingRule rule = createRule("R1", "年龄>=30", RuleType.INSURED,
-                    "#root['age'] >= 30");
+                    "{\"logic\":\"AND\",\"items\":[{\"feature\":\"age\",\"operator\":\"GTE\",\"value\":30}]}");
             when(ruleRepository.findAllEnabled()).thenReturn(List.of(rule));
 
             var results = service.evaluate(order, featResult);
@@ -182,7 +203,7 @@ class RuleApplicationServiceTest {
             featResult.putApplicantFeature("POL001", "APP001", Map.of("credit", 80));
 
             UnderwritingRule rule = createRule("R2", "信用>=70", RuleType.APPLICANT,
-                    "#root['credit'] >= 70");
+                    "{\"logic\":\"AND\",\"items\":[{\"feature\":\"credit\",\"operator\":\"GTE\",\"value\":70}]}");
             when(ruleRepository.findAllEnabled()).thenReturn(List.of(rule));
 
             var results = service.evaluate(order, featResult);
@@ -199,7 +220,7 @@ class RuleApplicationServiceTest {
             featResult.getPolicyFeatures().put("POL001", Map.of("premium", 5000));
 
             UnderwritingRule rule = createRule("R3", "保费<10000", RuleType.POLICY,
-                    "#root['premium'] < 10000");
+                    "{\"logic\":\"AND\",\"items\":[{\"feature\":\"premium\",\"operator\":\"LT\",\"value\":10000}]}");
             when(ruleRepository.findAllEnabled()).thenReturn(List.of(rule));
 
             var results = service.evaluate(order, featResult);
@@ -218,7 +239,7 @@ class RuleApplicationServiceTest {
             featResult.putInsuredFeature("POL001", "INS001", Map.of("channel", "OFFLINE"));
 
             UnderwritingRule rule = createRule("R_CH", "渠道检查", RuleType.INSURED,
-                    "#root['channel'] == 'OFFLINE'");
+                    "{\"logic\":\"AND\",\"items\":[{\"feature\":\"channel\",\"operator\":\"EQ\",\"value\":\"OFFLINE\"}]}");
             when(ruleRepository.findAllEnabled()).thenReturn(List.of(rule));
 
             var results = service.evaluate(order, featResult);
@@ -229,12 +250,16 @@ class RuleApplicationServiceTest {
         }
 
         @Test
-        @DisplayName("复杂 SpEL 表达式 → 正确评估")
+        @DisplayName("复杂条件 → 正确评估（AND）")
         void complexExpression() {
             featResult.putInsuredFeature("POL001", "INS001", Map.of("age", 35, "score", 85));
 
             UnderwritingRule rule = createRule("R_COMPLEX", "复合条件",
-                    RuleType.INSURED, "#root['age'] > 30 and #root['score'] > 60");
+                    RuleType.INSURED,
+                    "{\"logic\":\"AND\",\"items\":["
+                            + "{\"feature\":\"age\",\"operator\":\"GT\",\"value\":30},"
+                            + "{\"feature\":\"score\",\"operator\":\"GT\",\"value\":60}"
+                            + "]}");
             when(ruleRepository.findAllEnabled()).thenReturn(List.of(rule));
 
             var results = service.evaluate(order, featResult);
@@ -246,10 +271,12 @@ class RuleApplicationServiceTest {
         @Test
         @DisplayName("优先级排序 → 按 priority 升序排列")
         void prioritySorting() {
-            UnderwritingRule rule2 = createRule("R2", "规则2", RuleType.INSURED, "true");
+            UnderwritingRule rule2 = createRule("R2", "规则2", RuleType.INSURED,
+                    "{\"logic\":\"AND\",\"items\":[]}");
             rule2.setPriority(5);
 
-            UnderwritingRule rule1 = createRule("R1", "规则1", RuleType.INSURED, "true");
+            UnderwritingRule rule1 = createRule("R1", "规则1", RuleType.INSURED,
+                    "{\"logic\":\"AND\",\"items\":[]}");
             rule1.setPriority(1);
 
             when(ruleRepository.findAllEnabled()).thenReturn(List.of(rule2, rule1));
@@ -265,7 +292,8 @@ class RuleApplicationServiceTest {
         @Test
         @DisplayName("priority 为 null → 视为 0")
         void nullPriority() {
-            UnderwritingRule rule = createRule("R1", "规则1", RuleType.INSURED, "true");
+            UnderwritingRule rule = createRule("R1", "规则1", RuleType.INSURED,
+                    "{\"logic\":\"AND\",\"items\":[]}");
             rule.setPriority(null);
 
             when(ruleRepository.findAllEnabled()).thenReturn(List.of(rule));
@@ -275,10 +303,10 @@ class RuleApplicationServiceTest {
         }
 
         @Test
-        @DisplayName("表达式返回 null → 视为 false（不通过）")
-        void nullExpressionResult() {
+        @DisplayName("表达式返回 false → 视为不通过")
+        void falseExpressionResult() {
             UnderwritingRule rule = createRule("R1", "规则1", RuleType.INSURED,
-                    "#root['nonexistent']");
+                    "{\"logic\":\"AND\",\"items\":[{\"feature\":\"nonexistent\",\"operator\":\"IS_NOT_NULL\"}]}");
             when(ruleRepository.findAllEnabled()).thenReturn(List.of(rule));
 
             var results = service.evaluate(order, featResult);
@@ -303,6 +331,39 @@ class RuleApplicationServiceTest {
             assertThat(result.getRuleCode()).isEqualTo("R1");
             assertThat(result.getRuleName()).isEqualTo("年龄检查");
             assertThat(result.isPassed()).isTrue();
+        }
+    }
+
+    @Nested
+    @DisplayName("History - 规则历史查询")
+    class History {
+
+        @Test
+        @DisplayName("查询规则历史 → 返回按版本降序的多版本记录")
+        void getHistory() {
+            UnderwritingRuleHistory v2 = new UnderwritingRuleHistory();
+            v2.setVersion(2);
+            v2.setRuleCode("RULE_001");
+            UnderwritingRuleHistory v1 = new UnderwritingRuleHistory();
+            v1.setVersion(1);
+            v1.setRuleCode("RULE_001");
+            when(ruleRepository.findHistoryByRuleCode("RULE_001")).thenReturn(List.of(v2, v1));
+
+            List<UnderwritingRuleHistory> result = service.getHistory("RULE_001");
+
+            assertThat(result).hasSize(2);
+            assertThat(result.get(0).getVersion()).isEqualTo(2);
+            assertThat(result.get(1).getVersion()).isEqualTo(1);
+        }
+
+        @Test
+        @DisplayName("无历史记录 → 返回空列表")
+        void noHistory() {
+            when(ruleRepository.findHistoryByRuleCode("RULE_999")).thenReturn(List.of());
+
+            List<UnderwritingRuleHistory> result = service.getHistory("RULE_999");
+
+            assertThat(result).isEmpty();
         }
     }
 }

@@ -1,5 +1,9 @@
 package com.insurance.uw.bootstrap;
 
+import com.insurance.uw.application.rule.engine.ConditionListEvaluator;
+import com.insurance.uw.application.rule.engine.CrossDecisionTableEvaluator;
+import com.insurance.uw.application.rule.engine.RuleEngineFactory;
+import com.insurance.uw.application.rule.engine.ScorecardEvaluator;
 import com.insurance.uw.application.service.FeatureConfigApplicationService;
 import com.insurance.uw.application.service.RuleApplicationService;
 import com.insurance.uw.application.feature.handler.CompositeCalcHandler;
@@ -12,13 +16,17 @@ import com.insurance.uw.application.feature.handler.FeatureCalcHandler;
 import com.insurance.uw.application.feature.handler.ParamMappingCalcHandler;
 import com.insurance.uw.application.feature.impl.FeatureExtractionServiceImpl;
 import com.insurance.uw.application.service.FeatureExtractionService;
+import com.insurance.uw.domain.repository.CrossDecisionTableRepository;
 import com.insurance.uw.domain.repository.FeatureConfigRepository;
 import com.insurance.uw.domain.repository.FeatureScriptRepository;
+import com.insurance.uw.domain.repository.ScorecardConfigRepository;
 import com.insurance.uw.domain.repository.UnderwritingRuleRepository;
 import com.insurance.uw.domain.service.DownstreamApiClient;
 import com.insurance.uw.domain.service.FeatureDependencyResolver;
 import com.insurance.uw.domain.service.FeatureResultCache;
 import com.insurance.uw.domain.service.GroovyMappingEngine;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.util.List;
 import java.util.concurrent.ExecutorService;
@@ -57,8 +65,35 @@ public class ApplicationServiceConfiguration {
     }
 
     @Bean
-    public RuleApplicationService ruleApplicationService(UnderwritingRuleRepository repository) {
-        return new RuleApplicationService(repository);
+    public ConditionListEvaluator conditionListEvaluator(ObjectMapper objectMapper) {
+        return new ConditionListEvaluator(objectMapper);
+    }
+
+    @Bean
+    public CrossDecisionTableEvaluator crossDecisionTableEvaluator(
+            CrossDecisionTableRepository repository, ObjectMapper objectMapper) {
+        return new CrossDecisionTableEvaluator(repository, objectMapper);
+    }
+
+    @Bean
+    public ScorecardEvaluator scorecardEvaluator(
+            ScorecardConfigRepository repository, ObjectMapper objectMapper) {
+        return new ScorecardEvaluator(repository, objectMapper);
+    }
+
+    @Bean
+    public RuleEngineFactory ruleEngineFactory(
+            ConditionListEvaluator cle,
+            CrossDecisionTableEvaluator cdte,
+            ScorecardEvaluator se) {
+        return new RuleEngineFactory(cle, cdte, se);
+    }
+
+    @Bean
+    public RuleApplicationService ruleApplicationService(
+            UnderwritingRuleRepository repository,
+            RuleEngineFactory ruleEngineFactory) {
+        return new RuleApplicationService(repository, ruleEngineFactory);
     }
 
     @Bean

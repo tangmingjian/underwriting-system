@@ -1,17 +1,19 @@
 package com.insurance.uw.domain.model.entity;
 
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.insurance.uw.common.enums.ChangeType;
 import com.insurance.uw.common.enums.EvalType;
 import com.insurance.uw.common.enums.RuleType;
 
 import java.time.LocalDateTime;
 
 /**
- * 核保规则聚合根 — 映射 t_underwriting_rule 表
+ * 核保规则历史归档 — 映射 t_underwriting_rule_history 表
  */
-@TableName("t_underwriting_rule")
-public class UnderwritingRule {
+@TableName("t_underwriting_rule_history")
+public class UnderwritingRuleHistory {
 
+    private Long historyId;
     private Long id;
     private String ruleCode;
     private String ruleName;
@@ -23,10 +25,35 @@ public class UnderwritingRule {
     private Integer priority;
     private Integer status;
     private Integer version;
+    private ChangeType changeType;
+    private LocalDateTime changedAt;
     private LocalDateTime createTime;
     private LocalDateTime updateTime;
 
-    public UnderwritingRule() {}
+    public UnderwritingRuleHistory() {}
+
+    public static UnderwritingRuleHistory from(UnderwritingRule rule, ChangeType changeType) {
+        UnderwritingRuleHistory h = new UnderwritingRuleHistory();
+        h.id = rule.getId();
+        h.ruleCode = rule.getRuleCode();
+        h.ruleName = rule.getRuleName();
+        h.ruleType = rule.getRuleType();
+        h.expression = rule.getExpression();
+        h.evalType = rule.getEvalType();
+        h.featureCodes = rule.getFeatureCodes();
+        h.productCode = rule.getProductCode();
+        h.priority = rule.getPriority();
+        h.status = rule.getStatus();
+        h.version = rule.getVersion();
+        h.changeType = changeType;
+        h.changedAt = LocalDateTime.now();
+        h.createTime = rule.getCreateTime();
+        h.updateTime = rule.getUpdateTime();
+        return h;
+    }
+
+    public Long getHistoryId() { return historyId; }
+    public void setHistoryId(Long historyId) { this.historyId = historyId; }
 
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
@@ -61,14 +88,16 @@ public class UnderwritingRule {
     public Integer getVersion() { return version; }
     public void setVersion(Integer version) { this.version = version; }
 
+    public ChangeType getChangeType() { return changeType; }
+    public void setChangeType(ChangeType changeType) { this.changeType = changeType; }
+
+    public LocalDateTime getChangedAt() { return changedAt; }
+    public void setChangedAt(LocalDateTime changedAt) { this.changedAt = changedAt; }
+
     public LocalDateTime getCreateTime() { return createTime; }
     public void setCreateTime(LocalDateTime createTime) { this.createTime = createTime; }
 
     public LocalDateTime getUpdateTime() { return updateTime; }
     public void setUpdateTime(LocalDateTime updateTime) { this.updateTime = updateTime; }
-
-    public boolean isEnabled() {
-        return status != null && status == 1;
-    }
 
 }

@@ -13,8 +13,10 @@ import com.insurance.uw.infrastructure.client.discovery.ServiceDiscoveryStrategy
 import com.insurance.uw.infrastructure.client.discovery.StaticServiceDiscoveryStrategy;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig;
+import com.insurance.uw.domain.repository.CrossDecisionTableRepository;
 import com.insurance.uw.domain.repository.FeatureConfigRepository;
 import com.insurance.uw.domain.repository.FeatureScriptRepository;
+import com.insurance.uw.domain.repository.ScorecardConfigRepository;
 import com.insurance.uw.domain.repository.UnderwritingRuleRepository;
 import com.insurance.uw.domain.service.DownstreamApiClient;
 import com.insurance.uw.domain.service.FeatureResultCache;
@@ -195,6 +197,12 @@ public class UnderwritingConfiguration {
     }
 
     @Bean
+    public Duration historyTtl(
+            @Value("${underwriting.cache.history-ttl:600}") int seconds) {
+        return Duration.ofSeconds(seconds);
+    }
+
+    @Bean
     public Duration scriptTtl(
             @Value("${underwriting.cache.script-ttl:1800}") int seconds) {
         return Duration.ofSeconds(seconds);
@@ -211,9 +219,11 @@ public class UnderwritingConfiguration {
 
     @Bean
     public UnderwritingRuleRepository underwritingRuleRepository(UnderwritingRuleMapper mapper,
+                                                                  UnderwritingRuleHistoryMapper historyMapper,
                                                                   CacheOps cacheOps,
-                                                                  @Qualifier("ruleTtl") Duration ruleTtl) {
-        return new UnderwritingRuleRepositoryImpl(mapper, cacheOps, ruleTtl);
+                                                                  @Qualifier("ruleTtl") Duration ruleTtl,
+                                                                  @Qualifier("historyTtl") Duration historyTtl) {
+        return new UnderwritingRuleRepositoryImpl(mapper, historyMapper, cacheOps, ruleTtl, historyTtl);
     }
 
     @Bean
@@ -221,6 +231,20 @@ public class UnderwritingConfiguration {
                                                             CacheOps cacheOps,
                                                             @Qualifier("scriptTtl") Duration scriptTtl) {
         return new FeatureScriptRepositoryImpl(mapper, cacheOps, scriptTtl);
+    }
+
+    @Bean
+    public CrossDecisionTableRepository crossDecisionTableRepository(CrossDecisionTableMapper mapper,
+                                                                      CacheOps cacheOps,
+                                                                      @Qualifier("ruleTtl") Duration ruleTtl) {
+        return new CrossDecisionTableRepositoryImpl(mapper, cacheOps, ruleTtl);
+    }
+
+    @Bean
+    public ScorecardConfigRepository scorecardConfigRepository(ScorecardConfigMapper mapper,
+                                                                CacheOps cacheOps,
+                                                                @Qualifier("ruleTtl") Duration ruleTtl) {
+        return new ScorecardConfigRepositoryImpl(mapper, cacheOps, ruleTtl);
     }
 
 }

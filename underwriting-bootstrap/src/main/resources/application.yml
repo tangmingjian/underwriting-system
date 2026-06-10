@@ -53,6 +53,7 @@ underwriting:
   cache:
     feature-config-ttl: 600    # 特征配置缓存 10 分钟
     rule-ttl: 300              # 规则缓存 5 分钟
+    history-ttl: 600           # 规则历史缓存 10 分钟
     script-ttl: 1800           # 脚本缓存 30 分钟
   executor:
     core-pool-size: 8
