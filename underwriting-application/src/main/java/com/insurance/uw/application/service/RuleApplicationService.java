@@ -1,5 +1,6 @@
 package com.insurance.uw.application.service;
 
+import com.insurance.uw.application.rule.WordingResolver;
 import com.insurance.uw.application.rule.engine.RuleEngineFactory;
 import com.insurance.uw.common.enums.EvalType;
 import com.insurance.uw.common.enums.RuleType;
@@ -23,11 +24,14 @@ public class RuleApplicationService {
 
     private final UnderwritingRuleRepository repository;
     private final RuleEngineFactory ruleEngineFactory;
+    private final WordingResolver wordingResolver;
 
     public RuleApplicationService(UnderwritingRuleRepository repository,
-                                   RuleEngineFactory ruleEngineFactory) {
+                                   RuleEngineFactory ruleEngineFactory,
+                                   WordingResolver wordingResolver) {
         this.repository = repository;
         this.ruleEngineFactory = ruleEngineFactory;
+        this.wordingResolver = wordingResolver;
     }
 
     // ==================== 规则管理 ====================
@@ -143,9 +147,11 @@ public class RuleApplicationService {
                                 insured.getId(), policy.getId(), applicantId);
                         boolean passed = evaluateExpression(rule.getExpression(), features,
                                 rule.getEvalType());
+                        Map<String, String> wording = wordingResolver.resolve(
+                                rule.getWordingConfig(), features, passed);
                         results.add(new UnderwritingResult(
                                 "INSURED", insured.getId(), insured.getName(),
-                                rule.getRuleCode(), rule.getRuleName(), passed));
+                                rule.getRuleCode(), rule.getRuleName(), passed, wording));
                     }
                 }
                 break;
@@ -157,9 +163,11 @@ public class RuleApplicationService {
                     Map<String, Object> features = collectForApplicant(result, applicantId, policy.getId());
                     boolean passed = evaluateExpression(rule.getExpression(), features,
                             rule.getEvalType());
+                    Map<String, String> wording = wordingResolver.resolve(
+                            rule.getWordingConfig(), features, passed);
                     results.add(new UnderwritingResult(
                             "APPLICANT", applicantId, policy.getApplicant().getName(),
-                            rule.getRuleCode(), rule.getRuleName(), passed));
+                            rule.getRuleCode(), rule.getRuleName(), passed, wording));
                 }
                 break;
 
@@ -168,9 +176,11 @@ public class RuleApplicationService {
                     Map<String, Object> features = collectForPolicy(result, policy.getId());
                     boolean passed = evaluateExpression(rule.getExpression(), features,
                             rule.getEvalType());
+                    Map<String, String> wording = wordingResolver.resolve(
+                            rule.getWordingConfig(), features, passed);
                     results.add(new UnderwritingResult(
                             "POLICY", policy.getId(), null,
-                            rule.getRuleCode(), rule.getRuleName(), passed));
+                            rule.getRuleCode(), rule.getRuleName(), passed, wording));
                 }
                 break;
 
@@ -178,9 +188,11 @@ public class RuleApplicationService {
                 Map<String, Object> orderFeatures = collectForOrder(result);
                 boolean orderPassed = evaluateExpression(rule.getExpression(), orderFeatures,
                         rule.getEvalType());
+                Map<String, String> wording = wordingResolver.resolve(
+                        rule.getWordingConfig(), orderFeatures, orderPassed);
                 results.add(new UnderwritingResult(
                         "ORDER", order.getId(), null,
-                        rule.getRuleCode(), rule.getRuleName(), orderPassed));
+                        rule.getRuleCode(), rule.getRuleName(), orderPassed, wording));
                 break;
         }
 
@@ -241,15 +253,23 @@ public class RuleApplicationService {
         private final String ruleCode;
         private final String ruleName;
         private final boolean passed;
+        private final Map<String, String> wordingBySide;
 
         public UnderwritingResult(String level, String targetId, String targetName,
                                   String ruleCode, String ruleName, boolean passed) {
+            this(level, targetId, targetName, ruleCode, ruleName, passed, Collections.emptyMap());
+        }
+
+        public UnderwritingResult(String level, String targetId, String targetName,
+                                  String ruleCode, String ruleName, boolean passed,
+                                  Map<String, String> wordingBySide) {
             this.level = level;
             this.targetId = targetId;
             this.targetName = targetName;
             this.ruleCode = ruleCode;
             this.ruleName = ruleName;
             this.passed = passed;
+            this.wordingBySide = Collections.unmodifiableMap(new LinkedHashMap<>(wordingBySide));
         }
 
         public String getLevel() { return level; }
@@ -258,6 +278,7 @@ public class RuleApplicationService {
         public String getRuleCode() { return ruleCode; }
         public String getRuleName() { return ruleName; }
         public boolean isPassed() { return passed; }
+        public Map<String, String> getWordingBySide() { return wordingBySide; }
     }
 
 }

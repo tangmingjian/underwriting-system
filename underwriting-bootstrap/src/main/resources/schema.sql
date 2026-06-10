@@ -53,6 +53,7 @@ CREATE TABLE IF NOT EXISTS t_underwriting_rule (
     priority      INT           DEFAULT 0,
     status        TINYINT       DEFAULT 1 COMMENT '1:启用 0:停用',
     version       INT           DEFAULT 1 COMMENT '当前版本号',
+    wording_config TEXT          COMMENT '话素配置JSON: {"A":{"pass":"...","fail":"..."},"B":{...},"C":{...}}',
     create_time   DATETIME      DEFAULT CURRENT_TIMESTAMP,
     update_time   DATETIME      DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
@@ -71,6 +72,7 @@ CREATE TABLE IF NOT EXISTS t_underwriting_rule_history (
     priority      INT           DEFAULT 0,
     status        TINYINT       DEFAULT 1 COMMENT '1:启用 0:停用',
     version       INT           DEFAULT 1 COMMENT '版本号',
+    wording_config TEXT          COMMENT '话素配置JSON快照',
     change_type   VARCHAR(20)   NOT NULL COMMENT '变更类型: CREATE / UPDATE / DELETE',
     changed_at    DATETIME      NOT NULL COMMENT '归档时间',
     create_time   DATETIME      COMMENT '原记录创建时间',

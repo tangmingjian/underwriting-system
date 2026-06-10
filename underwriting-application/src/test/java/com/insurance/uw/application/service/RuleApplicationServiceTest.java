@@ -1,7 +1,7 @@
 package com.insurance.uw.application.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.insurance.uw.application.rule.WordingResolver;
 import com.insurance.uw.application.rule.engine.ConditionListEvaluator;
 import com.insurance.uw.application.rule.engine.CrossDecisionTableEvaluator;
 import com.insurance.uw.application.rule.engine.RuleEngineFactory;
@@ -46,11 +46,13 @@ class RuleApplicationServiceTest {
 
     @BeforeEach
     void setUp() {
-        ConditionListEvaluator cle = new ConditionListEvaluator(new ObjectMapper());
+        ObjectMapper objectMapper = new ObjectMapper();
+        ConditionListEvaluator cle = new ConditionListEvaluator(objectMapper);
         CrossDecisionTableEvaluator cdte = new CrossDecisionTableEvaluator(cdtRepository, new ObjectMapper());
         ScorecardEvaluator se = new ScorecardEvaluator(scRepository, new ObjectMapper());
         RuleEngineFactory factory = new RuleEngineFactory(cle, cdte, se);
-        service = new RuleApplicationService(ruleRepository, factory);
+        WordingResolver wordingResolver = new WordingResolver(objectMapper);
+        service = new RuleApplicationService(ruleRepository, factory, wordingResolver);
 
         Product product = new Product("PROD001", "测试产品");
         Applicant applicant = new Applicant("APP001", "张三", 35, "M");
@@ -364,6 +366,99 @@ class RuleApplicationServiceTest {
             List<UnderwritingRuleHistory> result = service.getHistory("RULE_999");
 
             assertThat(result).isEmpty();
+        }
+    }
+
+    @Nested
+    @DisplayName("wordingConfig - 话素模板解析")
+    class Wording {
+
+        private UnderwritingRule ruleWithWording(String wordingConfig) {
+            UnderwritingRule rule = createRule("RW", "话素规则", RuleType.INSURED,
+                    "{\"logic\":\"AND\",\"items\":[{\"feature\":\"age\",\"operator\":\"GTE\",\"value\":30}]}");
+            rule.setWordingConfig(wordingConfig);
+            return rule;
+        }
+
+        @Test
+        @DisplayName("passed 规则 → 用 pass 模板")
+        void passedRuleUsesPassTemplate() {
+            featResult.putInsuredFeature("POL001", "INS001", Map.of("age", 35));
+            String wordingJson = "{\"A\":{\"pass\":\"年龄{{age}}岁，通过\",\"fail\":\"年龄{{age}}岁，不通过\"},"
+                    + "\"B\":{\"pass\":\"被保险人{{age}}岁符合\",\"fail\":\"年龄不足\"}}";
+            UnderwritingRule rule = ruleWithWording(wordingJson);
+            when(ruleRepository.findAllEnabled()).thenReturn(List.of(rule));
+
+            var results = service.evaluate(order, featResult);
+
+            var r = results.stream().filter(x -> x.getTargetId().equals("INS001")).findFirst().orElseThrow();
+            assertThat(r.isPassed()).isTrue();
+            assertThat(r.getWordingBySide()).containsEntry("A", "年龄35岁，通过");
+            assertThat(r.getWordingBySide()).containsEntry("B", "被保险人35岁符合");
+            assertThat(r.getWordingBySide()).doesNotContainKey("C");
+        }
+
+        @Test
+        @DisplayName("failed 规则 → 用 fail 模板")
+        void failedRuleUsesFailTemplate() {
+            featResult.putInsuredFeature("POL001", "INS002", Map.of("age", 25));
+            String wordingJson = "{\"A\":{\"pass\":\"通过\",\"fail\":\"年龄{{age}}岁不通过\"},"
+                    + "\"C\":{\"pass\":\"通过\",\"fail\":\"被保险人{{age}}岁不通过\"}}";
+            UnderwritingRule rule = ruleWithWording(wordingJson);
+            when(ruleRepository.findAllEnabled()).thenReturn(List.of(rule));
+
+            var results = service.evaluate(order, featResult);
+
+            var r = results.stream().filter(x -> x.getTargetId().equals("INS002")).findFirst().orElseThrow();
+            assertThat(r.isPassed()).isFalse();
+            assertThat(r.getWordingBySide()).containsEntry("A", "年龄25岁不通过");
+            assertThat(r.getWordingBySide()).containsEntry("C", "被保险人25岁不通过");
+            assertThat(r.getWordingBySide()).doesNotContainKey("B");
+        }
+
+        @Test
+        @DisplayName("wordingConfig 为 null")
+        void nullWordingConfig() {
+            featResult.putInsuredFeature("POL001", "INS001", Map.of("age", 35));
+            UnderwritingRule rule = ruleWithWording(null);
+            when(ruleRepository.findAllEnabled()).thenReturn(List.of(rule));
+
+            var results = service.evaluate(order, featResult);
+
+            var r = results.stream().filter(x -> x.getTargetId().equals("INS001")).findFirst().orElseThrow();
+            assertThat(r.isPassed()).isTrue();
+            assertThat(r.getWordingBySide()).isEmpty();
+        }
+
+        @Test
+        @DisplayName("嵌套路径 {{score.level}}")
+        void nestedMacroPath() {
+            featResult.putInsuredFeature("POL001", "INS001",
+                    Map.of("age", 35, "score", Map.of("level", "A")));
+            String wordingJson = "{\"A\":{\"pass\":\"评分等级{{score.level}}，通过\"}}";
+            UnderwritingRule rule = ruleWithWording(wordingJson);
+            when(ruleRepository.findAllEnabled()).thenReturn(List.of(rule));
+
+            var results = service.evaluate(order, featResult);
+
+            var r = results.stream().filter(x -> x.getTargetId().equals("INS001")).findFirst().orElseThrow();
+            assertThat(r.isPassed()).isTrue();
+            assertThat(r.getWordingBySide()).containsEntry("A", "评分等级A，通过");
+        }
+
+        @Test
+        @DisplayName("宏对应特征不存在 → 替换为空字符串")
+        void missingMacroFeature() {
+            featResult.putInsuredFeature("POL001", "INS001", Map.of("age", 35));
+            String wordingJson = "{\"A\":{\"pass\":\"年龄{{age}}岁，{{missing}}信息\"}}";
+            UnderwritingRule rule = ruleWithWording(wordingJson);
+            when(ruleRepository.findAllEnabled()).thenReturn(List.of(rule));
+
+            var results = service.evaluate(order, featResult);
+
+            var r = results.stream().filter(x -> x.getTargetId().equals("INS001")).findFirst().orElseThrow();
+            assertThat(r.isPassed()).isTrue();
+            assertThat(r.getWordingBySide()).containsEntry("A", "年龄35岁，信息");
         }
     }
 }

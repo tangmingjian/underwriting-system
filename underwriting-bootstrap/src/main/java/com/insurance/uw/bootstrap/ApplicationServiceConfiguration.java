@@ -1,5 +1,6 @@
 package com.insurance.uw.bootstrap;
 
+import com.insurance.uw.application.rule.WordingResolver;
 import com.insurance.uw.application.rule.engine.ConditionListEvaluator;
 import com.insurance.uw.application.rule.engine.CrossDecisionTableEvaluator;
 import com.insurance.uw.application.rule.engine.RuleEngineFactory;
@@ -90,10 +91,16 @@ public class ApplicationServiceConfiguration {
     }
 
     @Bean
+    public WordingResolver wordingResolver(ObjectMapper objectMapper) {
+        return new WordingResolver(objectMapper);
+    }
+
+    @Bean
     public RuleApplicationService ruleApplicationService(
             UnderwritingRuleRepository repository,
-            RuleEngineFactory ruleEngineFactory) {
-        return new RuleApplicationService(repository, ruleEngineFactory);
+            RuleEngineFactory ruleEngineFactory,
+            WordingResolver wordingResolver) {
+        return new RuleApplicationService(repository, ruleEngineFactory, wordingResolver);
     }
 
     @Bean

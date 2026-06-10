@@ -29,6 +29,7 @@ public class UnderwritingRuleHistory {
     private LocalDateTime changedAt;
     private LocalDateTime createTime;
     private LocalDateTime updateTime;
+    private String wordingConfig;
 
     public UnderwritingRuleHistory() {}
 
@@ -49,6 +50,7 @@ public class UnderwritingRuleHistory {
         h.changedAt = LocalDateTime.now();
         h.createTime = rule.getCreateTime();
         h.updateTime = rule.getUpdateTime();
+        h.wordingConfig = rule.getWordingConfig();
         return h;
     }
 
@@ -99,5 +101,8 @@ public class UnderwritingRuleHistory {
 
     public LocalDateTime getUpdateTime() { return updateTime; }
     public void setUpdateTime(LocalDateTime updateTime) { this.updateTime = updateTime; }
+
+    public String getWordingConfig() { return wordingConfig; }
+    public void setWordingConfig(String wordingConfig) { this.wordingConfig = wordingConfig; }
 
 }

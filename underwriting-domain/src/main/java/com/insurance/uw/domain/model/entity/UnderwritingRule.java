@@ -25,6 +25,7 @@ public class UnderwritingRule {
     private Integer version;
     private LocalDateTime createTime;
     private LocalDateTime updateTime;
+    private String wordingConfig;
 
     public UnderwritingRule() {}
 
@@ -66,6 +67,9 @@ public class UnderwritingRule {
 
     public LocalDateTime getUpdateTime() { return updateTime; }
     public void setUpdateTime(LocalDateTime updateTime) { this.updateTime = updateTime; }
+
+    public String getWordingConfig() { return wordingConfig; }
+    public void setWordingConfig(String wordingConfig) { this.wordingConfig = wordingConfig; }
 
     public boolean isEnabled() {
         return status != null && status == 1;
