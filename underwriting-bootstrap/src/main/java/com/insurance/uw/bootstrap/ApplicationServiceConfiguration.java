@@ -26,6 +26,7 @@ import com.insurance.uw.domain.service.DownstreamApiClient;
 import com.insurance.uw.domain.service.FeatureDependencyResolver;
 import com.insurance.uw.domain.service.FeatureResultCache;
 import com.insurance.uw.domain.service.GroovyMappingEngine;
+import com.insurance.uw.infrastructure.cache.CacheOps;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -101,6 +102,14 @@ public class ApplicationServiceConfiguration {
             RuleEngineFactory ruleEngineFactory,
             WordingResolver wordingResolver) {
         return new RuleApplicationService(repository, ruleEngineFactory, wordingResolver);
+    }
+
+    @Bean
+    public CacheManagementService cacheManagementService(
+            CacheOps cacheOps,
+            GroovyMappingEngine groovyEngine,
+            FeatureResultCache featureResultCache) {
+        return new CacheManagementService(cacheOps, groovyEngine, featureResultCache);
     }
 
     @Bean

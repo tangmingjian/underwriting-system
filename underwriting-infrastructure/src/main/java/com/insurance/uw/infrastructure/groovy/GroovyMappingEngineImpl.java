@@ -55,6 +55,11 @@ public class GroovyMappingEngineImpl implements GroovyMappingEngine {
         scriptCache.invalidate(scriptId);
     }
 
+    @Override
+    public void evictAll() {
+        scriptCache.invalidateAll();
+    }
+
     @SuppressWarnings("unchecked")
     private Class<GroovyObject> getScriptClass(String scriptId, String scriptText) {
         return scriptCache.get(scriptId, id -> classLoader.parseClass(scriptText));

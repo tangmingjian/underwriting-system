@@ -5,14 +5,18 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.data.redis.core.Cursor;
+import org.springframework.data.redis.core.ScanOptions;
 import org.springframework.data.redis.core.StringRedisTemplate;
 
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Supplier;
 
 /**
@@ -163,6 +167,26 @@ public class CacheOps {
     public void evict(String key) {
         redis.delete(key);
         log.debug("[Cache] evict: {}", key);
+    }
+
+    /**
+     * 按前缀批量删除缓存 key，基于 SCAN 迭代避免阻塞 Redis。
+     */
+    public long deleteByPrefix(String prefix) {
+        String pattern = prefix + "*";
+        Set<String> keysToDelete = new HashSet<>();
+        try (Cursor<String> cursor = redis.scan(
+                ScanOptions.scanOptions().match(pattern).count(100).build())) {
+            while (cursor.hasNext()) {
+                keysToDelete.add(cursor.next());
+            }
+        }
+        if (keysToDelete.isEmpty()) {
+            return 0;
+        }
+        redis.delete(keysToDelete);
+        log.info("[Cache] evict by prefix: {} ({} keys)", prefix, keysToDelete.size());
+        return keysToDelete.size();
     }
 
     // ==================== Key 构建 ====================

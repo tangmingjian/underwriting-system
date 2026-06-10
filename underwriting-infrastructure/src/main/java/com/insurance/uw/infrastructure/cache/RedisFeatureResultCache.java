@@ -10,7 +10,7 @@ import java.util.Optional;
  */
 public class RedisFeatureResultCache implements FeatureResultCache {
 
-    private static final String PREFIX = "uw:result:";
+    static final String PREFIX = "uw:result:";
 
     private final CacheOps cache;
 
@@ -30,5 +30,10 @@ public class RedisFeatureResultCache implements FeatureResultCache {
     @Override
     public void put(String featureCode, String targetId, Object value, int ttlSeconds) {
         cache.set(resultKey(featureCode, targetId), value, Duration.ofSeconds(ttlSeconds));
+    }
+
+    @Override
+    public void evictAll() {
+        cache.deleteByPrefix(PREFIX);
     }
 }

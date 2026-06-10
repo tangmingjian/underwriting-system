@@ -21,4 +21,9 @@ public interface GroovyMappingEngine {
      */
     void evictScript(String scriptId);
 
+    /**
+     * 清除所有脚本的编译缓存
+     */
+    void evictAll();
+
 }

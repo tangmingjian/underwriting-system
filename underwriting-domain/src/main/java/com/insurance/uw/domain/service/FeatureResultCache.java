@@ -25,4 +25,9 @@ public interface FeatureResultCache {
      * @param ttlSeconds  过期时间（秒）
      */
     void put(String featureCode, String targetId, Object value, int ttlSeconds);
+
+    /**
+     * 清除所有特征计算结果缓存
+     */
+    void evictAll();
 }
