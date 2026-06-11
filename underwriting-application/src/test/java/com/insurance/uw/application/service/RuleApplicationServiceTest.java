@@ -1,16 +1,14 @@
 package com.insurance.uw.application.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.insurance.uw.application.rule.WordingResolver;
-import com.insurance.uw.application.rule.engine.ConditionListEvaluator;
-import com.insurance.uw.application.rule.engine.CrossDecisionTableEvaluator;
-import com.insurance.uw.application.rule.engine.RuleEngineFactory;
-import com.insurance.uw.application.rule.engine.ScorecardEvaluator;
+import com.insurance.uw.engine.core.rule.WordingResolver;
+import com.insurance.uw.engine.core.rule.engine.ConditionListEvaluator;
+import com.insurance.uw.engine.core.rule.engine.CrossDecisionTableEvaluator;
+import com.insurance.uw.engine.core.rule.engine.RuleEngineFactory;
+import com.insurance.uw.engine.core.rule.engine.ScorecardEvaluator;
 import com.insurance.uw.common.enums.EvalType;
 import com.insurance.uw.common.enums.RuleType;
 import com.insurance.uw.domain.model.entity.*;
-import com.insurance.uw.domain.repository.CrossDecisionTableRepository;
-import com.insurance.uw.domain.repository.ScorecardConfigRepository;
 import com.insurance.uw.domain.repository.UnderwritingRuleRepository;
 import com.insurance.uw.sdk.feature.FeatureExtractionRequest;
 import com.insurance.uw.sdk.feature.FeatureExtractionResult;
@@ -35,10 +33,10 @@ class RuleApplicationServiceTest {
     private UnderwritingRuleRepository ruleRepository;
 
     @Mock
-    private CrossDecisionTableRepository cdtRepository;
+    private com.insurance.uw.engine.core.repository.CrossDecisionTableRepository cdtRepository;
 
     @Mock
-    private ScorecardConfigRepository scRepository;
+    private com.insurance.uw.engine.core.repository.ScorecardConfigRepository scRepository;
 
     private RuleApplicationService service;
     private Order order;

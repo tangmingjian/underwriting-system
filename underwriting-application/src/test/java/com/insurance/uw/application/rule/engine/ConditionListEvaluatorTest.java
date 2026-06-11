@@ -1,6 +1,7 @@
 package com.insurance.uw.application.rule.engine;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.insurance.uw.engine.core.rule.engine.ConditionListEvaluator;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;

@@ -1,11 +1,15 @@
 package com.insurance.uw.application.service.handler;
 
-import com.insurance.uw.common.constants.FeatureConstants;
-import com.insurance.uw.common.enums.CalcType;
+import com.insurance.uw.engine.core.constants.FeatureConstants;
+import com.insurance.uw.engine.core.enums.AggregationLevel;
+import com.insurance.uw.engine.core.enums.CalcType;
+import com.insurance.uw.engine.core.enums.FeatureStatus;
+import com.insurance.uw.engine.core.enums.StorageLevel;
+import com.insurance.uw.engine.core.model.entity.FeatureConfig;
+import com.insurance.uw.engine.core.model.valueobject.CalcConfig;
+import com.insurance.uw.engine.core.handler.ParamMappingCalcHandler;
 import com.insurance.uw.domain.context.*;
 import com.insurance.uw.domain.model.entity.*;
-import com.insurance.uw.domain.model.valueobject.CalcConfig;
-import com.insurance.uw.application.feature.handler.ParamMappingCalcHandler;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;

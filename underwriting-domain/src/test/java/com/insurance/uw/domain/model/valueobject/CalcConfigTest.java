@@ -49,22 +49,20 @@ class CalcConfigTest {
         @Test
         @DisplayName("完整 EXTERNAL_API 配置 JSON → 正确解析所有字段")
         void externalApiConfig() {
-            String json = """
-                    {
-                        "service": {
-                            "discovery_type": "NACOS",
-                            "service_name": "risk-service",
-                            "namespace": "prod",
-                            "group": "DEFAULT",
-                            "path": "/api/v1/risk",
-                            "method": "POST",
-                            "timeout_ms": 5000,
-                            "headers": {"Authorization": "Bearer xxx"}
-                        },
-                        "input_script_id": "script-input-001",
-                        "output_script_id": "script-output-001"
-                    }
-                    """;
+            String json = "{\n"
+                    + "    \"service\": {\n"
+                    + "        \"discovery_type\": \"NACOS\",\n"
+                    + "        \"service_name\": \"risk-service\",\n"
+                    + "        \"namespace\": \"prod\",\n"
+                    + "        \"group\": \"DEFAULT\",\n"
+                    + "        \"path\": \"/api/v1/risk\",\n"
+                    + "        \"method\": \"POST\",\n"
+                    + "        \"timeout_ms\": 5000,\n"
+                    + "        \"headers\": {\"Authorization\": \"Bearer xxx\"}\n"
+                    + "    },\n"
+                    + "    \"input_script_id\": \"script-input-001\",\n"
+                    + "    \"output_script_id\": \"script-output-001\"\n"
+                    + "}";
 
             CalcConfig result = CalcConfig.fromJson(json);
 
@@ -83,9 +81,7 @@ class CalcConfigTest {
         @Test
         @DisplayName("PARAM_MAPPING 配置 JSON（source）→ 正确解析")
         void paramMappingConfig() {
-            String json = """
-                    {"source": "insured.age"}
-                    """;
+            String json = "{\"source\": \"insured.age\"}";
 
             CalcConfig result = CalcConfig.fromJson(json);
 

@@ -1,0 +1,175 @@
+package com.insurance.uw.engine.core.model.entity;
+
+import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.TableName;
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.insurance.uw.engine.core.enums.*;
+import com.insurance.uw.engine.core.model.valueobject.CalcConfig;
+import com.insurance.uw.engine.core.persistence.JsonListTypeHandler;
+
+import java.time.LocalDateTime;
+import java.util.List;
+
+/**
+ * 特征配置聚合根 —— 映射 t_feature_config 表
+ */
+@TableName(value = "t_feature_config", autoResultMap = true)
+public class FeatureConfig {
+
+    private Long id;
+    private String featureCode;
+    private String featureName;
+    private FeatureCategory category;
+    private DataType dataType;
+    private CalcType calcType;
+
+    /** calc_config JSON 原文（数据库映射），应用层通过 getCalcConfig() 获取解析后的对象 */
+    @TableField("calc_config")
+    private String calcConfigJson;
+
+    /** calc_config 解析后的缓存对象（非持久化，避免重复解析 JSON） */
+    @TableField(exist = false)
+    private transient CalcConfig cachedCalcConfig;
+
+    private AggregationLevel aggregation;
+    private StorageLevel storageLevel;
+    private Integer version;
+    private String defaultValue;
+    private Integer ttlSeconds;
+    private String sourceSystem;
+    private String owner;
+    private FeatureStatus status;
+    private String extraParams;
+
+    @TableField(value = "depends_on", typeHandler = JsonListTypeHandler.class)
+    private List<String> dependsOn;
+
+    private LocalDateTime createTime;
+    private LocalDateTime updateTime;
+
+    public FeatureConfig() {}
+
+    // ==================== getters / setters ====================
+
+    public Long getId() { return id; }
+    public void setId(Long id) { this.id = id; }
+
+    public String getFeatureCode() { return featureCode; }
+    public void setFeatureCode(String featureCode) { this.featureCode = featureCode; }
+
+    public String getFeatureName() { return featureName; }
+    public void setFeatureName(String featureName) { this.featureName = featureName; }
+
+    public FeatureCategory getCategory() { return category; }
+    public void setCategory(FeatureCategory category) { this.category = category; }
+
+    public DataType getDataType() { return dataType; }
+    public void setDataType(DataType dataType) { this.dataType = dataType; }
+
+    public CalcType getCalcType() { return calcType; }
+    public void setCalcType(CalcType calcType) { this.calcType = calcType; }
+
+    /**
+     * 获取 calc_config JSON 原始字符串
+     */
+    public String getCalcConfigJson() { return calcConfigJson; }
+    public void setCalcConfigJson(String calcConfigJson) {
+        this.cachedCalcConfig = null; // 使缓存失效
+        this.calcConfigJson = calcConfigJson;
+    }
+
+    /**
+     * 将 calc_config JSON 解析为强类型对象（带缓存，避免重复解析）
+     */
+    public CalcConfig getCalcConfig() {
+        if (cachedCalcConfig != null) {
+            return cachedCalcConfig;
+        }
+        cachedCalcConfig = CalcConfig.fromJson(this.calcConfigJson);
+        return cachedCalcConfig;
+    }
+
+    /**
+     * 将强类型对象序列化为 calc_config JSON，并更新缓存
+     */
+    public void setCalcConfig(CalcConfig calcConfig) {
+        this.cachedCalcConfig = calcConfig;
+        this.calcConfigJson = calcConfig != null ? calcConfig.toJson() : null;
+    }
+
+    public AggregationLevel getAggregation() { return aggregation; }
+    public void setAggregation(AggregationLevel aggregation) { this.aggregation = aggregation; }
+
+    public StorageLevel getStorageLevel() { return storageLevel; }
+    public void setStorageLevel(StorageLevel storageLevel) { this.storageLevel = storageLevel; }
+
+    public Integer getVersion() { return version; }
+    public void setVersion(Integer version) { this.version = version; }
+
+    public String getDefaultValue() { return defaultValue; }
+    public void setDefaultValue(String defaultValue) { this.defaultValue = defaultValue; }
+
+    public Integer getTtlSeconds() { return ttlSeconds; }
+    public void setTtlSeconds(Integer ttlSeconds) { this.ttlSeconds = ttlSeconds; }
+
+    public String getSourceSystem() { return sourceSystem; }
+    public void setSourceSystem(String sourceSystem) { this.sourceSystem = sourceSystem; }
+
+    public String getOwner() { return owner; }
+    public void setOwner(String owner) { this.owner = owner; }
+
+    public FeatureStatus getStatus() { return status; }
+    public void setStatus(FeatureStatus status) { this.status = status; }
+
+    public String getExtraParams() { return extraParams; }
+    public void setExtraParams(String extraParams) { this.extraParams = extraParams; }
+
+    public List<String> getDependsOn() { return dependsOn; }
+    public void setDependsOn(List<String> dependsOn) { this.dependsOn = dependsOn; }
+
+    public LocalDateTime getCreateTime() { return createTime; }
+    public void setCreateTime(LocalDateTime createTime) { this.createTime = createTime; }
+
+    public LocalDateTime getUpdateTime() { return updateTime; }
+    public void setUpdateTime(LocalDateTime updateTime) { this.updateTime = updateTime; }
+
+    // ==================== 便捷方法 ====================
+
+    @JsonIgnore
+    public boolean isEnabled() {
+        return status == FeatureStatus.ACTIVE;
+    }
+
+    /**
+     * 获取用于分组的服务标识（从 calc_config 中提取，用于调度器分组）。
+     *
+     * 分组策略按 discovery_type 区分：
+     * - NACOS → service_name（同服务名可合并批处理）
+     * - STATIC → static_endpoints + path（同 endpoint 集合 + 路径可合并）
+     * - DIRECT → path（同路径可合并）
+     * - 其他 calc_type 或无 service 配置 → fallback 到 featureCode（各自独立，不合并）
+     */
+    @JsonIgnore
+    public String getServiceKey() {
+        CalcConfig cc = getCalcConfig();
+        if (cc == null || cc.getService() == null) {
+            return featureCode;
+        }
+        var svc = cc.getService();
+        String type = svc.getDiscoveryType();
+        if ("NACOS".equalsIgnoreCase(type) && svc.getServiceName() != null) {
+            return svc.getServiceName() + "|" + (svc.getPath() != null ? svc.getPath() : "");
+        }
+        if ("STATIC".equalsIgnoreCase(type)) {
+            String endpoints = svc.getStaticEndpoints() != null
+                    ? String.join(",", svc.getStaticEndpoints()) : "";
+            return endpoints + "|" + (svc.getPath() != null ? svc.getPath() : "");
+        }
+        if ("DIRECT".equalsIgnoreCase(type) || type == null) {
+            return svc.getPath() != null ? svc.getPath() : featureCode;
+        }
+        // fallback：NACOS 但 service_name 为空 / 未知类型
+        return svc.getServiceName() != null ? svc.getServiceName() : featureCode;
+    }
+
+}

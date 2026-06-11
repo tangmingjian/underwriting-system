@@ -4,7 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.insurance.uw.common.enums.FeatureStatus;
 import com.insurance.uw.domain.model.entity.FeatureScript;
 import com.insurance.uw.domain.repository.FeatureScriptRepository;
-import com.insurance.uw.infrastructure.cache.CacheOps;
+import com.insurance.uw.engine.core.cache.CacheOps;
 
 import java.time.Duration;
 import java.util.List;

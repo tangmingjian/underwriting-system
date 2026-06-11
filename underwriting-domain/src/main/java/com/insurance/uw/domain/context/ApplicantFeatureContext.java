@@ -2,6 +2,7 @@ package com.insurance.uw.domain.context;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.insurance.uw.domain.model.entity.Applicant;
+import com.insurance.uw.engine.core.context.ContextNode;
 
 import java.util.List;
 import java.util.Map;
@@ -14,7 +15,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * 提供代理属性方便 Groovy 脚本直接访问。
  * 双向引用：通过 parentPolicyCtx 向上导航到投保单、订单。
  */
-public class ApplicantFeatureContext {
+public class ApplicantFeatureContext implements ContextNode {
 
     @JsonIgnore
     private final Applicant applicant;
@@ -59,5 +60,25 @@ public class ApplicantFeatureContext {
         OrderFeatureContext octx = getOrderContext();
         return octx != null ? octx.getOrderFeatures().get(key) : null;
     }
+
+    // ---- ContextNode 接口实现 ----
+
+    @Override
+    public String getNodeId() { return getApplicantId(); }
+
+    @Override
+    public String getLevelName() { return "APPLICANT"; }
+
+    @Override
+    public ContextNode getParent() { return parentPolicyCtx; }
+
+    @Override
+    public List<? extends ContextNode> getChildren() { return List.of(); }
+
+    @Override
+    public Map<String, Object> getFeatureStore() { return features; }
+
+    @Override
+    public Object getEntity() { return applicant; }
 
 }

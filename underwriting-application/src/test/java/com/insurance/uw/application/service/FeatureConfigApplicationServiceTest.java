@@ -5,7 +5,7 @@ import com.insurance.uw.domain.model.entity.FeatureScript;
 import com.insurance.uw.domain.model.valueobject.CalcConfig;
 import com.insurance.uw.domain.repository.FeatureConfigRepository;
 import com.insurance.uw.domain.repository.FeatureScriptRepository;
-import com.insurance.uw.domain.service.GroovyMappingEngine;
+import com.insurance.uw.engine.core.service.GroovyMappingEngine;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;

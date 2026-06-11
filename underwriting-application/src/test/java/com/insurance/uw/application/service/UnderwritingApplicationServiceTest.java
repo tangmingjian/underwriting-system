@@ -8,9 +8,8 @@ import com.insurance.uw.common.enums.StorageLevel;
 import com.insurance.uw.domain.model.entity.*;
 import com.insurance.uw.domain.model.valueobject.CalcConfig;
 import com.insurance.uw.domain.repository.FeatureConfigRepository;
-import com.insurance.uw.domain.service.FeatureDependencyResolver;
-import com.insurance.uw.domain.service.FeatureResultCache;
-import com.insurance.uw.application.feature.handler.FeatureCalcHandler;
+import com.insurance.uw.engine.core.service.FeatureDependencyResolver;
+import com.insurance.uw.engine.core.service.FeatureResultCache;
 import com.insurance.uw.application.feature.impl.FeatureExtractionServiceImpl;
 import com.insurance.uw.sdk.feature.FeatureExtractionRequest;
 import com.insurance.uw.sdk.feature.FeatureExtractionResult;
@@ -36,27 +35,29 @@ import static org.mockito.Mockito.*;
 class UnderwritingApplicationServiceTest {
 
     @Mock
-    private FeatureConfigRepository featureConfigRepository;
+    private com.insurance.uw.engine.core.repository.FeatureConfigRepository engineConfigRepo;
 
     @Mock
-    private FeatureCalcHandler mockHandler;
+    private com.insurance.uw.engine.core.handler.FeatureCalcHandler engineHandler;
 
     @Mock
-    private FeatureResultCache featureResultCache;
+    private com.insurance.uw.engine.core.service.FeatureResultCache engineResultCache;
 
     private ExecutorService executor;
-
     private FeatureExtractionServiceImpl service;
 
     @BeforeEach
     void setUp() {
         executor = Executors.newFixedThreadPool(2);
-        when(mockHandler.getSupportedType()).thenReturn(CalcType.PARAM_MAPPING);
-        service = new FeatureExtractionServiceImpl(
-                featureConfigRepository, new FeatureDependencyResolver(),
+        when(engineHandler.getSupportedType())
+                .thenReturn(com.insurance.uw.engine.core.enums.CalcType.PARAM_MAPPING);
+        var engine = new com.insurance.uw.engine.core.service.FeatureExtractionEngine(
+                engineConfigRepo,
+                new com.insurance.uw.engine.core.service.FeatureDependencyResolver(),
                 executor,
-                List.of(mockHandler),
-                featureResultCache);
+                List.of(engineHandler),
+                engineResultCache);
+        service = new FeatureExtractionServiceImpl(engine);
     }
 
     private Order createTestOrder() {
@@ -67,16 +68,17 @@ class UnderwritingApplicationServiceTest {
         return new Order("ORD001", "ONLINE", null, List.of(policy));
     }
 
-    private FeatureConfig createFeatureConfig(String code, CalcType calcType,
-                                               AggregationLevel aggregation,
-                                               StorageLevel storageLevel) {
-        FeatureConfig fc = new FeatureConfig();
+    private com.insurance.uw.engine.core.model.entity.FeatureConfig createEngineFeatureConfig(
+            String code, com.insurance.uw.engine.core.enums.CalcType calcType,
+            com.insurance.uw.engine.core.enums.AggregationLevel aggregation,
+            com.insurance.uw.engine.core.enums.StorageLevel storageLevel) {
+        var fc = new com.insurance.uw.engine.core.model.entity.FeatureConfig();
         fc.setFeatureCode(code);
         fc.setCalcType(calcType);
         fc.setAggregation(aggregation);
         fc.setStorageLevel(storageLevel);
-        fc.setStatus(FeatureStatus.ACTIVE);
-        CalcConfig calcConfig = new CalcConfig();
+        fc.setStatus(com.insurance.uw.engine.core.enums.FeatureStatus.ACTIVE);
+        var calcConfig = new com.insurance.uw.engine.core.model.valueobject.CalcConfig();
         calcConfig.setSource("insured.age");
         fc.setCalcConfig(calcConfig);
         return fc;
@@ -131,18 +133,20 @@ class UnderwritingApplicationServiceTest {
             FeatureExtractionResult result = service.extract(req);
 
             assertThat(result).isNotNull();
-            verify(featureConfigRepository, never()).findByFeatureCodes(any());
+            verify(engineConfigRepo, never()).findByFeatureCodes(any());
         }
 
         @Test
         @DisplayName("有特征配置 → 正常执行特征取数")
         void featuresExtracted() {
             Order order = createTestOrder();
-            FeatureConfig fc = createFeatureConfig("AGE", CalcType.PARAM_MAPPING,
-                    AggregationLevel.ORDER, StorageLevel.INSURED);
+            var fc = createEngineFeatureConfig("AGE",
+                    com.insurance.uw.engine.core.enums.CalcType.PARAM_MAPPING,
+                    com.insurance.uw.engine.core.enums.AggregationLevel.ORDER,
+                    com.insurance.uw.engine.core.enums.StorageLevel.INSURED);
 
-            when(featureConfigRepository.findByFeatureCodes(any())).thenReturn(List.of(fc));
-            when(mockHandler.execute(any(), eq(fc)))
+            when(engineConfigRepo.findByFeatureCodes(any())).thenReturn(List.of(fc));
+            when(engineHandler.execute(any(), eq(fc)))
                     .thenReturn(Map.of("INS001", Map.of("AGE", 35)));
 
             FeatureExtractionRequest req = buildRequest(order, Set.of("AGE"));
@@ -152,18 +156,20 @@ class UnderwritingApplicationServiceTest {
             assertThat(result.getInsuredFeatures()).containsKey("POL001");
             assertThat(result.getInsuredFeatures().get("POL001")).containsKey("INS001");
             assertThat(result.getInsuredFeatures().get("POL001").get("INS001")).containsEntry("AGE", 35);
-            verify(mockHandler).execute(any(), eq(fc));
+            verify(engineHandler).execute(any(), eq(fc));
         }
 
         @Test
         @DisplayName("特征执行失败 → 抛出 RuntimeException")
         void featureExecutionFails() {
             Order order = createTestOrder();
-            FeatureConfig fc = createFeatureConfig("AGE", CalcType.PARAM_MAPPING,
-                    AggregationLevel.ORDER, StorageLevel.INSURED);
+            var fc = createEngineFeatureConfig("AGE",
+                    com.insurance.uw.engine.core.enums.CalcType.PARAM_MAPPING,
+                    com.insurance.uw.engine.core.enums.AggregationLevel.ORDER,
+                    com.insurance.uw.engine.core.enums.StorageLevel.INSURED);
 
-            when(featureConfigRepository.findByFeatureCodes(any())).thenReturn(List.of(fc));
-            when(mockHandler.execute(any(), eq(fc)))
+            when(engineConfigRepo.findByFeatureCodes(any())).thenReturn(List.of(fc));
+            when(engineHandler.execute(any(), eq(fc)))
                     .thenThrow(new RuntimeException("网络超时"));
 
             FeatureExtractionRequest req = buildRequest(order, Set.of("AGE"));
@@ -262,11 +268,13 @@ class UnderwritingApplicationServiceTest {
         @DisplayName("特征→被保人映射 → FeatureExtractionResult 包含对应 insured")
         void insuredMapping() {
             Order order = createTestOrder();
-            FeatureConfig fc = createFeatureConfig("AGE", CalcType.PARAM_MAPPING,
-                    AggregationLevel.ORDER, StorageLevel.INSURED);
+            var fc = createEngineFeatureConfig("AGE",
+                    com.insurance.uw.engine.core.enums.CalcType.PARAM_MAPPING,
+                    com.insurance.uw.engine.core.enums.AggregationLevel.ORDER,
+                    com.insurance.uw.engine.core.enums.StorageLevel.INSURED);
 
-            when(featureConfigRepository.findByFeatureCodes(any())).thenReturn(List.of(fc));
-            when(mockHandler.execute(any(), eq(fc)))
+            when(engineConfigRepo.findByFeatureCodes(any())).thenReturn(List.of(fc));
+            when(engineHandler.execute(any(), eq(fc)))
                     .thenReturn(Map.of("INS001", Map.of("AGE", 35)));
 
             FeatureExtractionRequest req = new FeatureExtractionRequest();
@@ -288,11 +296,13 @@ class UnderwritingApplicationServiceTest {
         @DisplayName("ORDER 级特征 → 结果写入 orderFeatures")
         void orderLevelFeature() {
             Order order = createTestOrder();
-            FeatureConfig fc = createFeatureConfig("AGE", CalcType.PARAM_MAPPING,
-                    AggregationLevel.ORDER, StorageLevel.ORDER);
+            var fc = createEngineFeatureConfig("AGE",
+                    com.insurance.uw.engine.core.enums.CalcType.PARAM_MAPPING,
+                    com.insurance.uw.engine.core.enums.AggregationLevel.ORDER,
+                    com.insurance.uw.engine.core.enums.StorageLevel.ORDER);
 
-            when(featureConfigRepository.findByFeatureCodes(any())).thenReturn(List.of(fc));
-            when(mockHandler.execute(any(), eq(fc)))
+            when(engineConfigRepo.findByFeatureCodes(any())).thenReturn(List.of(fc));
+            when(engineHandler.execute(any(), eq(fc)))
                     .thenReturn(Map.of(FeatureConstants.ORDER_TARGET_KEY, Map.of("AGE", "ONLINE")));
 
             FeatureExtractionRequest req = buildRequest(order, Set.of("AGE"));
@@ -305,11 +315,13 @@ class UnderwritingApplicationServiceTest {
         @DisplayName("POLICY 级特征 → 结果写入 policyFeatures")
         void policyLevelFeature() {
             Order order = createTestOrder();
-            FeatureConfig fc = createFeatureConfig("SCORE", CalcType.PARAM_MAPPING,
-                    AggregationLevel.POLICY, StorageLevel.POLICY);
+            var fc = createEngineFeatureConfig("SCORE",
+                    com.insurance.uw.engine.core.enums.CalcType.PARAM_MAPPING,
+                    com.insurance.uw.engine.core.enums.AggregationLevel.POLICY,
+                    com.insurance.uw.engine.core.enums.StorageLevel.POLICY);
 
-            when(featureConfigRepository.findByFeatureCodes(any())).thenReturn(List.of(fc));
-            when(mockHandler.execute(any(), eq(fc)))
+            when(engineConfigRepo.findByFeatureCodes(any())).thenReturn(List.of(fc));
+            when(engineHandler.execute(any(), eq(fc)))
                     .thenReturn(Map.of("POL001", Map.of("SCORE", 75)));
 
             FeatureExtractionRequest req = buildRequest(order, Set.of("SCORE"));
@@ -324,14 +336,17 @@ class UnderwritingApplicationServiceTest {
     @DisplayName("结果存储 — 各级别分发")
     class StoreResults {
 
-        private FeatureExtractionRequest req(Order order, StorageLevel storageLevel, AggregationLevel agg) {
-            FeatureConfig fc = createFeatureConfig("FC", CalcType.PARAM_MAPPING, agg, storageLevel);
-            when(featureConfigRepository.findByFeatureCodes(any())).thenReturn(List.of(fc));
-            if (storageLevel == StorageLevel.ORDER) {
-                when(mockHandler.execute(any(), eq(fc)))
+        private FeatureExtractionRequest req(Order order,
+                                              com.insurance.uw.engine.core.enums.StorageLevel storageLevel,
+                                              com.insurance.uw.engine.core.enums.AggregationLevel agg) {
+            var fc = createEngineFeatureConfig("FC",
+                    com.insurance.uw.engine.core.enums.CalcType.PARAM_MAPPING, agg, storageLevel);
+            when(engineConfigRepo.findByFeatureCodes(any())).thenReturn(List.of(fc));
+            if (storageLevel == com.insurance.uw.engine.core.enums.StorageLevel.ORDER) {
+                when(engineHandler.execute(any(), eq(fc)))
                         .thenReturn(Map.of(FeatureConstants.ORDER_TARGET_KEY, "ONLINE"));
             } else {
-                when(mockHandler.execute(any(), eq(fc))).thenReturn(Map.of("INS001", 35));
+                when(engineHandler.execute(any(), eq(fc))).thenReturn(Map.of("INS001", 35));
             }
             return buildRequest(order, Set.of("FC"));
         }
@@ -341,7 +356,8 @@ class UnderwritingApplicationServiceTest {
         void storeToInsured() {
             Order order = createTestOrder();
             FeatureExtractionResult result = service.extract(
-                    req(order, StorageLevel.INSURED, AggregationLevel.ORDER));
+                    req(order, com.insurance.uw.engine.core.enums.StorageLevel.INSURED,
+                            com.insurance.uw.engine.core.enums.AggregationLevel.ORDER));
 
             assertThat(result.getInsuredFeatures()).containsKey("POL001");
             assertThat(result.getInsuredFeatures().get("POL001")).containsKey("INS001");
@@ -351,10 +367,12 @@ class UnderwritingApplicationServiceTest {
         @DisplayName("StorageLevel=POLICY → 写入 policyFeatures")
         void storeToPolicy() {
             Order order = createTestOrder();
-            FeatureConfig fc = createFeatureConfig("FC", CalcType.PARAM_MAPPING,
-                    AggregationLevel.ORDER, StorageLevel.POLICY);
-            when(featureConfigRepository.findByFeatureCodes(any())).thenReturn(List.of(fc));
-            when(mockHandler.execute(any(), eq(fc))).thenReturn(Map.of("POL001", 75));
+            var fc = createEngineFeatureConfig("FC",
+                    com.insurance.uw.engine.core.enums.CalcType.PARAM_MAPPING,
+                    com.insurance.uw.engine.core.enums.AggregationLevel.ORDER,
+                    com.insurance.uw.engine.core.enums.StorageLevel.POLICY);
+            when(engineConfigRepo.findByFeatureCodes(any())).thenReturn(List.of(fc));
+            when(engineHandler.execute(any(), eq(fc))).thenReturn(Map.of("POL001", 75));
 
             FeatureExtractionResult result = service.extract(buildRequest(order, Set.of("FC")));
 
@@ -365,10 +383,12 @@ class UnderwritingApplicationServiceTest {
         @DisplayName("StorageLevel=APPLICANT → 写入 applicantFeatures")
         void storeToApplicant() {
             Order order = createTestOrder();
-            FeatureConfig fc = createFeatureConfig("FC", CalcType.PARAM_MAPPING,
-                    AggregationLevel.ORDER, StorageLevel.APPLICANT);
-            when(featureConfigRepository.findByFeatureCodes(any())).thenReturn(List.of(fc));
-            when(mockHandler.execute(any(), eq(fc))).thenReturn(Map.of("POL001", 42));
+            var fc = createEngineFeatureConfig("FC",
+                    com.insurance.uw.engine.core.enums.CalcType.PARAM_MAPPING,
+                    com.insurance.uw.engine.core.enums.AggregationLevel.ORDER,
+                    com.insurance.uw.engine.core.enums.StorageLevel.APPLICANT);
+            when(engineConfigRepo.findByFeatureCodes(any())).thenReturn(List.of(fc));
+            when(engineHandler.execute(any(), eq(fc))).thenReturn(Map.of("APP001", 42));
 
             FeatureExtractionResult result = service.extract(buildRequest(order, Set.of("FC")));
 
@@ -381,7 +401,8 @@ class UnderwritingApplicationServiceTest {
         void storeToOrder() {
             Order order = createTestOrder();
             FeatureExtractionResult result = service.extract(
-                    req(order, StorageLevel.ORDER, AggregationLevel.ORDER));
+                    req(order, com.insurance.uw.engine.core.enums.StorageLevel.ORDER,
+                            com.insurance.uw.engine.core.enums.AggregationLevel.ORDER));
 
             assertThat(result.getOrderFeatures()).containsEntry("FC", "ONLINE");
         }
@@ -395,10 +416,12 @@ class UnderwritingApplicationServiceTest {
         @DisplayName("不支持的计算类型 → 抛出 IllegalArgumentException")
         void unsupportedCalcType() {
             Order order = createTestOrder();
-            FeatureConfig fc = createFeatureConfig("FC", CalcType.EXTERNAL_API,
-                    AggregationLevel.ORDER, StorageLevel.ORDER);
+            var fc = createEngineFeatureConfig("FC",
+                    com.insurance.uw.engine.core.enums.CalcType.EXTERNAL_API,
+                    com.insurance.uw.engine.core.enums.AggregationLevel.ORDER,
+                    com.insurance.uw.engine.core.enums.StorageLevel.ORDER);
 
-            when(featureConfigRepository.findByFeatureCodes(any())).thenReturn(List.of(fc));
+            when(engineConfigRepo.findByFeatureCodes(any())).thenReturn(List.of(fc));
 
             FeatureExtractionRequest req = buildRequest(order, Set.of("FC"));
 

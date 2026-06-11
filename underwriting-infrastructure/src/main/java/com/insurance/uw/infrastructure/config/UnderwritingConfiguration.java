@@ -3,14 +3,16 @@ package com.insurance.uw.infrastructure.config;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
-import com.insurance.uw.infrastructure.cache.CacheOps;
-import com.insurance.uw.infrastructure.client.DownstreamApiClientImpl;
-import com.insurance.uw.infrastructure.client.MockDownstreamApiClient;
-import com.insurance.uw.infrastructure.client.discovery.DirectServiceDiscoveryStrategy;
-import com.insurance.uw.infrastructure.client.discovery.NacosServiceDiscoveryStrategy;
-import com.insurance.uw.infrastructure.client.discovery.ServiceDiscoveryRouter;
-import com.insurance.uw.infrastructure.client.discovery.ServiceDiscoveryStrategy;
-import com.insurance.uw.infrastructure.client.discovery.StaticServiceDiscoveryStrategy;
+import com.insurance.uw.engine.core.cache.CacheOps;
+import com.insurance.uw.engine.core.cache.RedisFeatureResultCache;
+import com.insurance.uw.engine.core.client.DownstreamApiClientImpl;
+import com.insurance.uw.engine.core.client.MockDownstreamApiClient;
+import com.insurance.uw.engine.core.discovery.DirectServiceDiscoveryStrategy;
+import com.insurance.uw.engine.core.discovery.NacosServiceDiscoveryStrategy;
+import com.insurance.uw.engine.core.discovery.ServiceDiscoveryRouter;
+import com.insurance.uw.engine.core.discovery.ServiceDiscoveryStrategy;
+import com.insurance.uw.engine.core.discovery.StaticServiceDiscoveryStrategy;
+import com.insurance.uw.engine.core.groovy.GroovyMappingEngineImpl;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig;
 import com.insurance.uw.domain.repository.CrossDecisionTableRepository;
@@ -18,16 +20,13 @@ import com.insurance.uw.domain.repository.FeatureConfigRepository;
 import com.insurance.uw.domain.repository.FeatureScriptRepository;
 import com.insurance.uw.domain.repository.ScorecardConfigRepository;
 import com.insurance.uw.domain.repository.UnderwritingRuleRepository;
-import com.insurance.uw.domain.service.DownstreamApiClient;
-import com.insurance.uw.domain.service.FeatureResultCache;
-import com.insurance.uw.domain.service.GroovyMappingEngine;
-import com.insurance.uw.infrastructure.cache.RedisFeatureResultCache;
-import com.insurance.uw.infrastructure.groovy.GroovyMappingEngineImpl;
+import com.insurance.uw.engine.core.service.DownstreamApiClient;
+import com.insurance.uw.engine.core.service.FeatureResultCache;
+import com.insurance.uw.engine.core.service.GroovyMappingEngine;
 import com.insurance.uw.infrastructure.persistence.*;
-import org.apache.hc.client5.http.config.RequestConfig;
-import org.apache.hc.client5.http.impl.classic.HttpClients;
-import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManagerBuilder;
-import org.apache.hc.core5.util.Timeout;
+import org.apache.http.client.config.RequestConfig;
+import org.apache.http.impl.client.HttpClients;
+import org.apache.http.impl.conn.PoolingHttpClientConnectionManager;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -63,21 +62,20 @@ public class UnderwritingConfiguration {
             @Value("${underwriting.http.pool.max-total:200}") int maxTotal,
             @Value("${underwriting.http.pool.max-per-route:50}") int maxPerRoute) {
 
-        var connectionManager = PoolingHttpClientConnectionManagerBuilder.create()
-                .setMaxConnTotal(maxTotal)
-                .setMaxConnPerRoute(maxPerRoute)
-                .build();
+        PoolingHttpClientConnectionManager connectionManager = new PoolingHttpClientConnectionManager();
+        connectionManager.setMaxTotal(maxTotal);
+        connectionManager.setDefaultMaxPerRoute(maxPerRoute);
 
-        var requestConfig = RequestConfig.custom()
-                .setConnectionRequestTimeout(Timeout.ofSeconds(connectionRequestTimeout))
-                .setConnectTimeout(Timeout.ofSeconds(connectTimeout))
-                .setResponseTimeout(Timeout.ofSeconds(readTimeout))
+        RequestConfig requestConfig = RequestConfig.custom()
+                .setConnectionRequestTimeout(connectionRequestTimeout * 1000)
+                .setConnectTimeout(connectTimeout * 1000)
+                .setSocketTimeout(readTimeout * 1000)
                 .build();
 
         var httpClient = HttpClients.custom()
                 .setConnectionManager(connectionManager)
                 .setDefaultRequestConfig(requestConfig)
-                .evictIdleConnections(org.apache.hc.core5.util.TimeValue.ofMinutes(1))
+                .evictIdleConnections(60, java.util.concurrent.TimeUnit.SECONDS)
                 .build();
 
         return new RestTemplate(new HttpComponentsClientHttpRequestFactory(httpClient));

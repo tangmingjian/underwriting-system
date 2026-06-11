@@ -1,8 +1,9 @@
 package com.insurance.uw.application.rule.engine;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.insurance.uw.domain.model.entity.ScorecardConfig;
-import com.insurance.uw.domain.repository.ScorecardConfigRepository;
+import com.insurance.uw.engine.core.model.entity.ScorecardConfig;
+import com.insurance.uw.engine.core.repository.ScorecardConfigRepository;
+import com.insurance.uw.engine.core.rule.engine.ScorecardEvaluator;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;

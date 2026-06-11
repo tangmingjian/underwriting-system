@@ -1,7 +1,7 @@
 package com.insurance.uw.application.service;
 
-import com.insurance.uw.application.rule.WordingResolver;
-import com.insurance.uw.application.rule.engine.RuleEngineFactory;
+import com.insurance.uw.engine.core.rule.WordingResolver;
+import com.insurance.uw.engine.core.rule.engine.RuleEngineFactory;
 import com.insurance.uw.common.enums.EvalType;
 import com.insurance.uw.common.enums.RuleType;
 import com.insurance.uw.domain.context.ApplicantFeatureContext;
@@ -201,7 +201,10 @@ public class RuleApplicationService {
 
     private boolean evaluateExpression(String expression, Map<String, Object> features,
                                         EvalType evalType) {
-        return ruleEngineFactory.evaluate(evalType, features, expression);
+        com.insurance.uw.engine.core.enums.EvalType engEvalType = evalType != null
+                ? com.insurance.uw.engine.core.enums.EvalType.valueOf(evalType.name())
+                : null;
+        return ruleEngineFactory.evaluate(engEvalType, features, expression);
     }
 
     // ==================== 特征收集（从 FeatureExtractionResult 扁平 map） ====================

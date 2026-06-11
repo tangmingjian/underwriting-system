@@ -1,8 +1,8 @@
 package com.insurance.uw.bootstrap;
 
-import com.insurance.uw.domain.service.FeatureResultCache;
-import com.insurance.uw.domain.service.GroovyMappingEngine;
-import com.insurance.uw.infrastructure.cache.CacheOps;
+import com.insurance.uw.engine.core.service.FeatureResultCache;
+import com.insurance.uw.engine.core.service.GroovyMappingEngine;
+import com.insurance.uw.engine.core.cache.CacheOps;
 
 /**
  * 缓存管理服务 — 提供一键清理所有缓存（Redis + 本地 Caffeine）的能力。

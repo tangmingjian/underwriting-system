@@ -17,6 +17,10 @@
     <dependencies>
         <dependency>
             <groupId>com.insurance.uw</groupId>
+            <artifactId>underwriting-engine-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.insurance.uw</groupId>
             <artifactId>underwriting-domain</artifactId>
         </dependency>
         <dependency>

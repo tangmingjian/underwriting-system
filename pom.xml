@@ -7,7 +7,7 @@
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>3.3.5</version>
+        <version>2.7.18</version>
         <relativePath/>
     </parent>
 
@@ -19,6 +19,7 @@
     <description>核保配置化系统 - DDD架构</description>
 
     <modules>
+        <module>underwriting-engine-core</module>
         <module>underwriting-common</module>
         <module>underwriting-domain</module>
         <module>underwriting-application</module>
@@ -29,30 +30,32 @@
     </modules>
 
     <properties>
-        <java.version>21</java.version>
+        <java.version>11</java.version>
         <mybatis-plus.version>3.5.7</mybatis-plus.version>
-        <groovy.version>4.0.22</groovy.version>
-        <knife4j.version>4.5.0</knife4j.version>
-        <resilience4j.version>2.2.0</resilience4j.version>
+        <groovy.version>3.0.20</groovy.version>
+        <resilience4j.version>1.7.1</resilience4j.version>
+        <httpclient5.version>5.2.1</httpclient5.version>
     </properties>
 
     <dependencyManagement>
         <dependencies>
             <dependency>
+                <groupId>org.springframework.cloud</groupId>
+                <artifactId>spring-cloud-dependencies</artifactId>
+                <version>2021.0.9</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <dependency>
                 <groupId>com.baomidou</groupId>
-                <artifactId>mybatis-plus-spring-boot3-starter</artifactId>
+                <artifactId>mybatis-plus-boot-starter</artifactId>
                 <version>${mybatis-plus.version}</version>
             </dependency>
             <dependency>
-                <groupId>org.apache.groovy</groupId>
+                <groupId>org.codehaus.groovy</groupId>
                 <artifactId>groovy-all</artifactId>
                 <version>${groovy.version}</version>
                 <type>pom</type>
-            </dependency>
-            <dependency>
-                <groupId>com.github.xiaoymin</groupId>
-                <artifactId>knife4j-openapi3-jakarta-spring-boot-starter</artifactId>
-                <version>${knife4j.version}</version>
             </dependency>
             <dependency>
                 <groupId>io.github.resilience4j</groupId>
@@ -60,11 +63,21 @@
                 <version>${resilience4j.version}</version>
             </dependency>
             <dependency>
+                <groupId>org.apache.httpcomponents.client5</groupId>
+                <artifactId>httpclient5</artifactId>
+                <version>${httpclient5.version}</version>
+            </dependency>
+            <dependency>
                 <groupId>com.github.ben-manes.caffeine</groupId>
                 <artifactId>caffeine</artifactId>
                 <version>3.1.8</version>
             </dependency>
             <!-- internal modules -->
+            <dependency>
+                <groupId>com.insurance.uw</groupId>
+                <artifactId>underwriting-engine-core</artifactId>
+                <version>${project.version}</version>
+            </dependency>
             <dependency>
                 <groupId>com.insurance.uw</groupId>
                 <artifactId>underwriting-common</artifactId>

@@ -62,10 +62,10 @@ public class FeatureResultDispatcher {
         StorageLevel storage = fc.getStorageLevel();
 
         switch (agg) {
-            case ORDER    -> dispatchOrderResults((OrderFeatureContext) aggCtx, fc, storage, results);
-            case POLICY   -> dispatchPolicyResults((PolicyFeatureContext) aggCtx, fc, storage, results);
-            case INSURED  -> dispatchInsuredResults((InsuredFeatureContext) aggCtx, fc, storage, results);
-            case APPLICANT -> dispatchApplicantResults((ApplicantFeatureContext) aggCtx, fc, storage, results);
+            case ORDER:    dispatchOrderResults((OrderFeatureContext) aggCtx, fc, storage, results); break;
+            case POLICY:   dispatchPolicyResults((PolicyFeatureContext) aggCtx, fc, storage, results); break;
+            case INSURED:  dispatchInsuredResults((InsuredFeatureContext) aggCtx, fc, storage, results); break;
+            case APPLICANT: dispatchApplicantResults((ApplicantFeatureContext) aggCtx, fc, storage, results); break;
         }
     }
 
@@ -83,10 +83,10 @@ public class FeatureResultDispatcher {
     private void dispatchOrderResults(OrderFeatureContext ctx, FeatureConfig fc,
                                       StorageLevel storage, Map<String, Object> results) {
         switch (storage) {
-            case ORDER     -> dispatchOrderToOrder(ctx, fc, results);
-            case POLICY    -> dispatchOrderToPolicy(ctx, fc, results);
-            case APPLICANT -> dispatchOrderToApplicant(ctx, fc, results);
-            case INSURED   -> dispatchOrderToInsured(ctx, fc, results);
+            case ORDER:     dispatchOrderToOrder(ctx, fc, results); break;
+            case POLICY:    dispatchOrderToPolicy(ctx, fc, results); break;
+            case APPLICANT: dispatchOrderToApplicant(ctx, fc, results); break;
+            case INSURED:   dispatchOrderToInsured(ctx, fc, results); break;
         }
     }
 
@@ -168,14 +168,14 @@ public class FeatureResultDispatcher {
     private void dispatchPolicyResults(PolicyFeatureContext polCtx, FeatureConfig fc,
                                        StorageLevel storage, Map<String, Object> results) {
         switch (storage) {
-            case POLICY    -> dispatchPolicyToPolicy(polCtx, fc, results);
-            case APPLICANT -> dispatchPolicyToApplicant(polCtx, fc, results);
-            case INSURED   -> dispatchPolicyToInsured(polCtx, fc, results);
-            case ORDER -> {
+            case POLICY:    dispatchPolicyToPolicy(polCtx, fc, results); break;
+            case APPLICANT: dispatchPolicyToApplicant(polCtx, fc, results); break;
+            case INSURED:   dispatchPolicyToInsured(polCtx, fc, results); break;
+            case ORDER:
                 // POLICY → ORDER: 向上路由拒绝
                 LOG.warning("[存储] 拒绝(向上): POLICY×ORDER " + fc.getFeatureCode()
                         + " policyId=" + polCtx.getPolicyId());
-            }
+                break;
         }
     }
 
@@ -229,13 +229,13 @@ public class FeatureResultDispatcher {
     private void dispatchInsuredResults(InsuredFeatureContext insCtx, FeatureConfig fc,
                                         StorageLevel storage, Map<String, Object> results) {
         switch (storage) {
-            case INSURED -> dispatchInsuredToInsured(insCtx, fc, results);
-            case APPLICANT -> LOG.warning("[存储] 拒绝(跨兄弟): INSURED×APPLICANT " + fc.getFeatureCode()
-                    + " insuredId=" + insCtx.getInsuredId());
-            case POLICY -> LOG.warning("[存储] 拒绝(向上): INSURED×POLICY " + fc.getFeatureCode()
-                    + " insuredId=" + insCtx.getInsuredId());
-            case ORDER -> LOG.warning("[存储] 拒绝(向上): INSURED×ORDER " + fc.getFeatureCode()
-                    + " insuredId=" + insCtx.getInsuredId());
+            case INSURED: dispatchInsuredToInsured(insCtx, fc, results); break;
+            case APPLICANT: LOG.warning("[存储] 拒绝(跨兄弟): INSURED×APPLICANT " + fc.getFeatureCode()
+                    + " insuredId=" + insCtx.getInsuredId()); break;
+            case POLICY: LOG.warning("[存储] 拒绝(向上): INSURED×POLICY " + fc.getFeatureCode()
+                    + " insuredId=" + insCtx.getInsuredId()); break;
+            case ORDER: LOG.warning("[存储] 拒绝(向上): INSURED×ORDER " + fc.getFeatureCode()
+                    + " insuredId=" + insCtx.getInsuredId()); break;
         }
     }
 
@@ -258,13 +258,13 @@ public class FeatureResultDispatcher {
     private void dispatchApplicantResults(ApplicantFeatureContext appCtx, FeatureConfig fc,
                                           StorageLevel storage, Map<String, Object> results) {
         switch (storage) {
-            case APPLICANT -> dispatchApplicantToApplicant(appCtx, fc, results);
-            case INSURED -> LOG.warning("[存储] 拒绝(不可达): APPLICANT×INSURED " + fc.getFeatureCode()
-                    + " applicantId=" + appCtx.getApplicantId());
-            case POLICY -> LOG.warning("[存储] 拒绝(向上): APPLICANT×POLICY " + fc.getFeatureCode()
-                    + " applicantId=" + appCtx.getApplicantId());
-            case ORDER -> LOG.warning("[存储] 拒绝(向上): APPLICANT×ORDER " + fc.getFeatureCode()
-                    + " applicantId=" + appCtx.getApplicantId());
+            case APPLICANT: dispatchApplicantToApplicant(appCtx, fc, results); break;
+            case INSURED: LOG.warning("[存储] 拒绝(不可达): APPLICANT×INSURED " + fc.getFeatureCode()
+                    + " applicantId=" + appCtx.getApplicantId()); break;
+            case POLICY: LOG.warning("[存储] 拒绝(向上): APPLICANT×POLICY " + fc.getFeatureCode()
+                    + " applicantId=" + appCtx.getApplicantId()); break;
+            case ORDER: LOG.warning("[存储] 拒绝(向上): APPLICANT×ORDER " + fc.getFeatureCode()
+                    + " applicantId=" + appCtx.getApplicantId()); break;
         }
     }
 

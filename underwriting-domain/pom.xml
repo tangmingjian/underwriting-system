@@ -17,6 +17,10 @@
     <dependencies>
         <dependency>
             <groupId>com.insurance.uw</groupId>
+            <artifactId>underwriting-engine-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.insurance.uw</groupId>
             <artifactId>underwriting-common</artifactId>
         </dependency>
         <dependency>
@@ -26,7 +30,7 @@
         </dependency>
         <dependency>
             <groupId>com.baomidou</groupId>
-            <artifactId>mybatis-plus-spring-boot3-starter</artifactId>
+            <artifactId>mybatis-plus-boot-starter</artifactId>
             <optional>true</optional>
         </dependency>
         <dependency>

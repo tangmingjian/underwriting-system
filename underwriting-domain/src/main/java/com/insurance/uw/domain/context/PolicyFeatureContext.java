@@ -2,6 +2,7 @@ package com.insurance.uw.domain.context;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.insurance.uw.domain.model.entity.Policy;
+import com.insurance.uw.engine.core.context.ContextNode;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -13,7 +14,7 @@ import java.util.stream.Collectors;
  * 零拷贝设计：只持有 Policy 对象引用。
  * 双向引用：持有 parentOrderCtx 向上导航，构建时将自身传入子级上下文。
  */
-public class PolicyFeatureContext {
+public class PolicyFeatureContext implements ContextNode {
     @JsonIgnore
     private final Policy policy;
     @JsonIgnore
@@ -49,6 +50,31 @@ public class PolicyFeatureContext {
     // ---- 向上导航（仅内部导航，不参与序列化） ----
     @JsonIgnore
     public OrderFeatureContext getOrderContext() { return parentOrderCtx; }
+
+    // ---- ContextNode 接口实现 ----
+
+    @Override
+    public String getNodeId() { return getPolicyId(); }
+
+    @Override
+    public String getLevelName() { return "POLICY"; }
+
+    @Override
+    public ContextNode getParent() { return parentOrderCtx; }
+
+    @Override
+    public List<? extends ContextNode> getChildren() {
+        List<ContextNode> children = new ArrayList<>();
+        children.add(applicantCtx);
+        children.addAll(insuredContexts);
+        return children;
+    }
+
+    @Override
+    public Map<String, Object> getFeatureStore() { return policyFeatures; }
+
+    @Override
+    public Object getEntity() { return policy; }
 
     // ---- 按特征过滤被保人 ----
 

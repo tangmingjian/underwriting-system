@@ -1,14 +1,14 @@
 package com.insurance.uw.application.service.handler;
 
-import com.insurance.uw.common.enums.CalcType;
-import com.insurance.uw.domain.model.entity.FeatureConfig;
-import com.insurance.uw.domain.model.entity.FeatureScript;
-import com.insurance.uw.domain.model.valueobject.CalcConfig;
-import com.insurance.uw.domain.model.valueobject.ServiceConfig;
-import com.insurance.uw.domain.repository.FeatureScriptRepository;
-import com.insurance.uw.domain.service.DownstreamApiClient;
-import com.insurance.uw.domain.service.GroovyMappingEngine;
-import com.insurance.uw.application.feature.handler.ExternalApiCalcHandler;
+import com.insurance.uw.engine.core.enums.CalcType;
+import com.insurance.uw.engine.core.model.entity.FeatureConfig;
+import com.insurance.uw.engine.core.model.entity.FeatureScript;
+import com.insurance.uw.engine.core.model.valueobject.CalcConfig;
+import com.insurance.uw.engine.core.model.valueobject.ServiceConfig;
+import com.insurance.uw.engine.core.repository.FeatureScriptRepository;
+import com.insurance.uw.engine.core.service.DownstreamApiClient;
+import com.insurance.uw.engine.core.service.GroovyMappingEngine;
+import com.insurance.uw.engine.core.handler.ExternalApiCalcHandler;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;

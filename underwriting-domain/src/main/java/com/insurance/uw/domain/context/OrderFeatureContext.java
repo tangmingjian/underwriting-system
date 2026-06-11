@@ -2,6 +2,7 @@ package com.insurance.uw.domain.context;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.insurance.uw.domain.model.entity.Order;
+import com.insurance.uw.engine.core.context.ContextNode;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -13,7 +14,7 @@ import java.util.stream.Collectors;
  * 零拷贝设计：只持有 Order 对象引用。
  * 构建时递归创建所有子级上下文树。
  */
-public class OrderFeatureContext {
+public class OrderFeatureContext implements ContextNode {
     @JsonIgnore
     private final Order order;
     private final List<PolicyFeatureContext> policyContexts;
@@ -95,7 +96,7 @@ public class OrderFeatureContext {
         if (allowedPolicies.isEmpty()) return List.of();
         return contexts.stream()
                 .filter(ic -> allowedPolicies.contains(ic.getPolicyContext().getPolicyId()))
-                .toList();
+                .collect(Collectors.toList());
     }
 
     /**
@@ -164,6 +165,26 @@ public class OrderFeatureContext {
                 })
                 .collect(Collectors.toList());
     }
+
+    // ==================== ContextNode 接口实现 ====================
+
+    @Override
+    public String getNodeId() { return getOrderId(); }
+
+    @Override
+    public String getLevelName() { return "ORDER"; }
+
+    @Override
+    public ContextNode getParent() { return null; }
+
+    @Override
+    public List<? extends ContextNode> getChildren() { return policyContexts; }
+
+    @Override
+    public Map<String, Object> getFeatureStore() { return orderFeatures; }
+
+    @Override
+    public Object getEntity() { return order; }
 
     /**
      * 按特征码返回相关保单上下文（用于收集对应投保人）。

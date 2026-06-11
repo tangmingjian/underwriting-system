@@ -5,7 +5,7 @@ import com.insurance.uw.common.enums.CalcType;
 import com.insurance.uw.common.enums.FeatureStatus;
 import com.insurance.uw.domain.model.entity.FeatureConfig;
 import com.insurance.uw.domain.repository.FeatureConfigRepository;
-import com.insurance.uw.infrastructure.cache.CacheOps;
+import com.insurance.uw.engine.core.cache.CacheOps;
 
 import java.time.Duration;
 import java.util.ArrayList;
@@ -13,6 +13,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 /**
  * 特征配置仓储实现 — 带 Redis 缓存
@@ -64,7 +65,7 @@ public class FeatureConfigRepositoryImpl implements FeatureConfigRepository {
             return List.of();
         }
         // 1. Redis MGET 批量获取
-        List<String> keys = featureCodes.stream().map(CacheOps::fcKey).toList();
+        List<String> keys = featureCodes.stream().map(CacheOps::fcKey).collect(Collectors.toList());
         List<Optional<FeatureConfig>> cached = cache.multiGet(keys, FeatureConfig.class);
 
         // 2. 分离命中 / 未命中

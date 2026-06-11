@@ -106,12 +106,13 @@ public class FeatureDependencyResolver {
      * ORDER(3) > POLICY(2) > APPLICANT(1) > INSURED(0)
      */
     private int rank(AggregationLevel level) {
-        return switch (level) {
-            case ORDER -> 3;
-            case POLICY -> 2;
-            case APPLICANT -> 1;
-            case INSURED -> 0;
-        };
+        switch (level) {
+            case ORDER: return 3;
+            case POLICY: return 2;
+            case APPLICANT: return 1;
+            case INSURED: return 0;
+            default: throw new IllegalArgumentException("Unknown AggregationLevel: " + level);
+        }
     }
 
 }
