@@ -1,8 +1,8 @@
 package com.insurance.uw.interfaces.controller;
 
 import com.insurance.uw.application.service.RuleApplicationService;
-import com.insurance.uw.domain.model.entity.UnderwritingRule;
-import com.insurance.uw.domain.model.entity.UnderwritingRuleHistory;
+import com.insurance.uw.engine.core.model.entity.UnderwritingRule;
+import com.insurance.uw.engine.core.model.entity.UnderwritingRuleHistory;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;

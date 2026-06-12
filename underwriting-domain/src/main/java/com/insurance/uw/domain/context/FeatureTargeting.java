@@ -1,7 +1,7 @@
 package com.insurance.uw.domain.context;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.insurance.uw.domain.model.entity.FeatureConfig;
+import com.insurance.uw.engine.core.model.entity.FeatureConfig;
 
 import java.util.*;
 

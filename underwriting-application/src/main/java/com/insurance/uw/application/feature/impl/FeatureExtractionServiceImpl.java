@@ -3,7 +3,7 @@ package com.insurance.uw.application.feature.impl;
 import com.insurance.uw.application.service.FeatureExtractionService;
 import com.insurance.uw.domain.context.*;
 import com.insurance.uw.domain.model.entity.Order;
-import com.insurance.uw.domain.model.entity.FeatureConfig;
+import com.insurance.uw.engine.core.model.entity.FeatureConfig;
 import com.insurance.uw.engine.core.service.FeatureExtractionEngine;
 import com.insurance.uw.engine.core.targeting.FeatureTargeting;
 import com.insurance.uw.sdk.feature.FeatureExtractionRequest;

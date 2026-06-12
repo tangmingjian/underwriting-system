@@ -13,13 +13,9 @@ import com.insurance.uw.engine.core.discovery.ServiceDiscoveryRouter;
 import com.insurance.uw.engine.core.discovery.ServiceDiscoveryStrategy;
 import com.insurance.uw.engine.core.discovery.StaticServiceDiscoveryStrategy;
 import com.insurance.uw.engine.core.groovy.GroovyMappingEngineImpl;
+import com.insurance.uw.engine.core.repository.*;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig;
-import com.insurance.uw.domain.repository.CrossDecisionTableRepository;
-import com.insurance.uw.domain.repository.FeatureConfigRepository;
-import com.insurance.uw.domain.repository.FeatureScriptRepository;
-import com.insurance.uw.domain.repository.ScorecardConfigRepository;
-import com.insurance.uw.domain.repository.UnderwritingRuleRepository;
 import com.insurance.uw.engine.core.service.DownstreamApiClient;
 import com.insurance.uw.engine.core.service.FeatureResultCache;
 import com.insurance.uw.engine.core.service.GroovyMappingEngine;
@@ -210,38 +206,38 @@ public class UnderwritingConfiguration {
 
     @Bean
     public FeatureConfigRepository featureConfigRepository(FeatureConfigMapper mapper,
-                                                            CacheOps cacheOps,
-                                                            @Qualifier("featureConfigTtl") Duration fcTtl) {
+                                                           CacheOps cacheOps,
+                                                           @Qualifier("featureConfigTtl") Duration fcTtl) {
         return new FeatureConfigRepositoryImpl(mapper, cacheOps, fcTtl);
     }
 
     @Bean
     public UnderwritingRuleRepository underwritingRuleRepository(UnderwritingRuleMapper mapper,
-                                                                  UnderwritingRuleHistoryMapper historyMapper,
-                                                                  CacheOps cacheOps,
-                                                                  @Qualifier("ruleTtl") Duration ruleTtl,
-                                                                  @Qualifier("historyTtl") Duration historyTtl) {
+                                                                 UnderwritingRuleHistoryMapper historyMapper,
+                                                                 CacheOps cacheOps,
+                                                                 @Qualifier("ruleTtl") Duration ruleTtl,
+                                                                 @Qualifier("historyTtl") Duration historyTtl) {
         return new UnderwritingRuleRepositoryImpl(mapper, historyMapper, cacheOps, ruleTtl, historyTtl);
     }
 
     @Bean
     public FeatureScriptRepository featureScriptRepository(FeatureScriptMapper mapper,
-                                                            CacheOps cacheOps,
-                                                            @Qualifier("scriptTtl") Duration scriptTtl) {
+                                                           CacheOps cacheOps,
+                                                           @Qualifier("scriptTtl") Duration scriptTtl) {
         return new FeatureScriptRepositoryImpl(mapper, cacheOps, scriptTtl);
     }
 
     @Bean
     public CrossDecisionTableRepository crossDecisionTableRepository(CrossDecisionTableMapper mapper,
-                                                                      CacheOps cacheOps,
-                                                                      @Qualifier("ruleTtl") Duration ruleTtl) {
+                                                                     CacheOps cacheOps,
+                                                                     @Qualifier("ruleTtl") Duration ruleTtl) {
         return new CrossDecisionTableRepositoryImpl(mapper, cacheOps, ruleTtl);
     }
 
     @Bean
     public ScorecardConfigRepository scorecardConfigRepository(ScorecardConfigMapper mapper,
-                                                                CacheOps cacheOps,
-                                                                @Qualifier("ruleTtl") Duration ruleTtl) {
+                                                               CacheOps cacheOps,
+                                                               @Qualifier("ruleTtl") Duration ruleTtl) {
         return new ScorecardConfigRepositoryImpl(mapper, cacheOps, ruleTtl);
     }
 

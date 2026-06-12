@@ -21,8 +21,8 @@ CREATE TABLE IF NOT EXISTS t_feature_config (
     status          ENUM('DRAFT','ACTIVE','DEPRECATED') DEFAULT 'DRAFT' COMMENT '状态',
     extra_params    VARCHAR(500)  COMMENT '扩展参数JSON',
     depends_on      JSON          COMMENT '依赖的特征码列表，如 ["ins.B", "pol.C"]',
-    create_time     DATETIME      DEFAULT CURRENT_TIMESTAMP,
-    update_time     DATETIME      DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    created_date     DATETIME      DEFAULT CURRENT_TIMESTAMP,
+    updated_date     DATETIME      DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
 
 -- 特征脚本表（出入参映射 Groovy 脚本，独立版本管理）
@@ -35,8 +35,8 @@ CREATE TABLE IF NOT EXISTS t_feature_script (
     version     INT          DEFAULT 1 COMMENT '版本号',
     status      ENUM('DRAFT','ACTIVE','DEPRECATED') DEFAULT 'DRAFT' COMMENT '状态',
     description VARCHAR(500) COMMENT '脚本说明',
-    create_time DATETIME     DEFAULT CURRENT_TIMESTAMP,
-    update_time DATETIME     DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    created_date DATETIME     DEFAULT CURRENT_TIMESTAMP,
+    updated_date DATETIME     DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     UNIQUE KEY uk_script_version (script_id, version)
 );
 
@@ -54,8 +54,8 @@ CREATE TABLE IF NOT EXISTS t_underwriting_rule (
     status        TINYINT       DEFAULT 1 COMMENT '1:启用 0:停用',
     version       INT           DEFAULT 1 COMMENT '当前版本号',
     wording_config TEXT          COMMENT '话素配置JSON: {"A":{"pass":"...","fail":"..."},"B":{...},"C":{...}}',
-    create_time   DATETIME      DEFAULT CURRENT_TIMESTAMP,
-    update_time   DATETIME      DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    created_date   DATETIME      DEFAULT CURRENT_TIMESTAMP,
+    updated_date   DATETIME      DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
 
 -- 核保规则历史归档表
@@ -75,8 +75,8 @@ CREATE TABLE IF NOT EXISTS t_underwriting_rule_history (
     wording_config TEXT          COMMENT '话素配置JSON快照',
     change_type   VARCHAR(20)   NOT NULL COMMENT '变更类型: CREATE / UPDATE / DELETE',
     changed_at    DATETIME      NOT NULL COMMENT '归档时间',
-    create_time   DATETIME      COMMENT '原记录创建时间',
-    update_time   DATETIME      COMMENT '原记录更新时间',
+    created_date   DATETIME      COMMENT '原记录创建时间',
+    updated_date   DATETIME      COMMENT '原记录更新时间',
     INDEX idx_rule_history_code (rule_code),
     INDEX idx_rule_history_rule_id (id)
 );
@@ -91,8 +91,8 @@ CREATE TABLE IF NOT EXISTS t_cross_decision_table (
     cells           JSON          COMMENT '单元格JSON: [{"row":"val","col":"val","result":true}]',
     default_result  TINYINT       DEFAULT 0 COMMENT '默认结果: 1=true 0=false',
     status          TINYINT       DEFAULT 1 COMMENT '1:启用 0:停用',
-    create_time     DATETIME      DEFAULT CURRENT_TIMESTAMP,
-    update_time     DATETIME      DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    created_date     DATETIME      DEFAULT CURRENT_TIMESTAMP,
+    updated_date     DATETIME      DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
 
 -- 评分卡配置表
@@ -104,8 +104,8 @@ CREATE TABLE IF NOT EXISTS t_scorecard_config (
     scoring_formula VARCHAR(500)  COMMENT '评分公式，如 "{dim1}*0.6+{dim2}*0.4"',
     buckets         JSON          COMMENT '分桶JSON: [{"min":0,"max":60,"result":false}]',
     status          TINYINT       DEFAULT 1 COMMENT '1:启用 0:停用',
-    create_time     DATETIME      DEFAULT CURRENT_TIMESTAMP,
-    update_time     DATETIME      DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    created_date     DATETIME      DEFAULT CURRENT_TIMESTAMP,
+    updated_date     DATETIME      DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
 
 -- =============================================

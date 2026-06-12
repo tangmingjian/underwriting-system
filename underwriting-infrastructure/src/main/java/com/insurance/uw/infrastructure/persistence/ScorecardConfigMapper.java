@@ -1,7 +1,7 @@
 package com.insurance.uw.infrastructure.persistence;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
-import com.insurance.uw.domain.model.entity.ScorecardConfig;
+import com.insurance.uw.engine.core.model.entity.ScorecardConfig;
 import org.apache.ibatis.annotations.Mapper;
 
 /**

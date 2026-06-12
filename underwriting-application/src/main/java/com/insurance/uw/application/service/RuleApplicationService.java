@@ -1,16 +1,12 @@
 package com.insurance.uw.application.service;
 
+import com.insurance.uw.engine.core.enums.EvalType;
+import com.insurance.uw.engine.core.model.entity.UnderwritingRule;
+import com.insurance.uw.engine.core.model.entity.UnderwritingRuleHistory;
+import com.insurance.uw.engine.core.repository.UnderwritingRuleRepository;
 import com.insurance.uw.engine.core.rule.WordingResolver;
 import com.insurance.uw.engine.core.rule.engine.RuleEngineFactory;
-import com.insurance.uw.common.enums.EvalType;
-import com.insurance.uw.common.enums.RuleType;
-import com.insurance.uw.domain.context.ApplicantFeatureContext;
-import com.insurance.uw.domain.context.InsuredFeatureContext;
-import com.insurance.uw.domain.context.PolicyFeatureContext;
 import com.insurance.uw.domain.model.entity.Order;
-import com.insurance.uw.domain.model.entity.UnderwritingRule;
-import com.insurance.uw.domain.model.entity.UnderwritingRuleHistory;
-import com.insurance.uw.domain.repository.UnderwritingRuleRepository;
 import com.insurance.uw.sdk.feature.FeatureExtractionRequest;
 import com.insurance.uw.sdk.feature.FeatureExtractionResult;
 

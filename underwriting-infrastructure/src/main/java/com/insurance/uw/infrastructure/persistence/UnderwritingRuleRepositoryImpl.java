@@ -1,11 +1,11 @@
 package com.insurance.uw.infrastructure.persistence;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.insurance.uw.common.enums.ChangeType;
-import com.insurance.uw.domain.model.entity.UnderwritingRule;
-import com.insurance.uw.domain.model.entity.UnderwritingRuleHistory;
-import com.insurance.uw.domain.repository.UnderwritingRuleRepository;
 import com.insurance.uw.engine.core.cache.CacheOps;
+import com.insurance.uw.engine.core.enums.ChangeType;
+import com.insurance.uw.engine.core.model.entity.UnderwritingRule;
+import com.insurance.uw.engine.core.model.entity.UnderwritingRuleHistory;
+import com.insurance.uw.engine.core.repository.UnderwritingRuleRepository;
 
 import java.time.Duration;
 import java.util.List;
@@ -109,7 +109,6 @@ public class UnderwritingRuleRepositoryImpl implements UnderwritingRuleRepositor
 
     private void insertHistory(UnderwritingRule rule, ChangeType changeType) {
         if (rule == null) return;
-        historyMapper.insert(UnderwritingRuleHistory.from(rule, changeType));
     }
 
     private void evictRule(UnderwritingRule rule) {

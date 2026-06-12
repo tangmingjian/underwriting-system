@@ -1,13 +1,13 @@
 package com.insurance.uw.application.feature.routing;
 
-import com.insurance.uw.common.enums.AggregationLevel;
-import com.insurance.uw.common.enums.StorageLevel;
 import com.insurance.uw.domain.context.ApplicantFeatureContext;
 import com.insurance.uw.domain.context.FeatureTargeting;
 import com.insurance.uw.domain.context.InsuredFeatureContext;
 import com.insurance.uw.domain.context.OrderFeatureContext;
 import com.insurance.uw.domain.context.PolicyFeatureContext;
-import com.insurance.uw.domain.model.entity.FeatureConfig;
+import com.insurance.uw.engine.core.enums.AggregationLevel;
+import com.insurance.uw.engine.core.enums.StorageLevel;
+import com.insurance.uw.engine.core.model.entity.FeatureConfig;
 
 import java.util.Collections;
 import java.util.List;

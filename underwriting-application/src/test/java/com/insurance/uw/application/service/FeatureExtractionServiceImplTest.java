@@ -1,29 +1,15 @@
 package com.insurance.uw.application.service;
 
 import com.insurance.uw.common.constants.FeatureConstants;
-import com.insurance.uw.common.enums.AggregationLevel;
-import com.insurance.uw.common.enums.CalcType;
-import com.insurance.uw.common.enums.FeatureStatus;
-import com.insurance.uw.common.enums.StorageLevel;
 import com.insurance.uw.domain.model.entity.*;
-import com.insurance.uw.domain.model.valueobject.CalcConfig;
-import com.insurance.uw.domain.model.valueobject.ServiceConfig;
-import com.insurance.uw.domain.repository.FeatureConfigRepository;
-import com.insurance.uw.engine.core.service.FeatureDependencyResolver;
-import com.insurance.uw.engine.core.service.FeatureResultCache;
 import com.insurance.uw.application.feature.impl.FeatureExtractionServiceImpl;
 import com.insurance.uw.sdk.feature.FeatureExtractionRequest;
 import com.insurance.uw.sdk.feature.FeatureExtractionResult;
-import com.insurance.uw.domain.context.FeatureTargeting;
-import com.insurance.uw.domain.context.InsuredFeatureContext;
-import com.insurance.uw.domain.context.OrderFeatureContext;
-import com.insurance.uw.domain.context.PolicyFeatureContext;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 

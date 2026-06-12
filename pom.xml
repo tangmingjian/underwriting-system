@@ -19,7 +19,8 @@
     <description>核保配置化系统 - DDD架构</description>
 
     <modules>
-        <module>underwriting-engine-core</module>
+        <module>underwriting-engine-feature</module>
+        <module>underwriting-engine-rule</module>
         <module>underwriting-common</module>
         <module>underwriting-domain</module>
         <module>underwriting-application</module>
@@ -75,7 +76,12 @@
             <!-- internal modules -->
             <dependency>
                 <groupId>com.insurance.uw</groupId>
-                <artifactId>underwriting-engine-core</artifactId>
+                <artifactId>underwriting-engine-feature</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.insurance.uw</groupId>
+                <artifactId>underwriting-engine-rule</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>

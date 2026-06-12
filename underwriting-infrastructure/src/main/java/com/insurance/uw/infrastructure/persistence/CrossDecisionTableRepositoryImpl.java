@@ -1,9 +1,9 @@
 package com.insurance.uw.infrastructure.persistence;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.insurance.uw.domain.model.entity.CrossDecisionTable;
-import com.insurance.uw.domain.repository.CrossDecisionTableRepository;
 import com.insurance.uw.engine.core.cache.CacheOps;
+import com.insurance.uw.engine.core.model.entity.CrossDecisionTable;
+import com.insurance.uw.engine.core.repository.CrossDecisionTableRepository;
 
 import java.time.Duration;
 import java.util.List;

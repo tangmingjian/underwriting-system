@@ -17,6 +17,10 @@
     <dependencies>
         <dependency>
             <groupId>com.insurance.uw</groupId>
+            <artifactId>underwriting-engine-feature</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.insurance.uw</groupId>
             <artifactId>underwriting-domain</artifactId>
         </dependency>
         <dependency>
@@ -61,6 +65,10 @@
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
             <optional>true</optional>
+        </dependency>
+        <dependency>
+            <groupId>com.insurance.uw</groupId>
+            <artifactId>underwriting-engine-rule</artifactId>
         </dependency>
     </dependencies>
 

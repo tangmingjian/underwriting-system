@@ -1,6 +1,5 @@
 package com.insurance.uw.domain.service;
 
-import com.insurance.uw.domain.model.entity.FeatureConfig;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;

@@ -1,7 +1,7 @@
 package com.insurance.uw.domain.service;
 
-import com.insurance.uw.common.enums.AggregationLevel;
-import com.insurance.uw.domain.model.entity.FeatureConfig;
+import com.insurance.uw.engine.core.enums.AggregationLevel;
+import com.insurance.uw.engine.core.model.entity.FeatureConfig;
 
 import java.util.*;
 
@@ -36,7 +36,7 @@ public class FeatureDependencyResolver {
                     // 校验依赖方向：只允许依赖上级或同级特征，禁止向下依赖
                     FeatureConfig depCfg = configMap.get(dep);
                     if (depCfg != null) {
-                        validateDependencyDirection(fc, cfg.getAggregation(), dep, depCfg.getAggregation());
+                        validateDependencyDirection(fc, cfg.getAggregation    (), dep, depCfg.getAggregation());
                     }
                     inDegree.merge(fc, 1, Integer::sum);
                     dependents.computeIfAbsent(dep, k -> new HashSet<>()).add(fc);

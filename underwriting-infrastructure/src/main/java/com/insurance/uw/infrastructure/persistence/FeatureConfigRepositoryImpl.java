@@ -1,11 +1,11 @@
 package com.insurance.uw.infrastructure.persistence;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.insurance.uw.common.enums.CalcType;
-import com.insurance.uw.common.enums.FeatureStatus;
-import com.insurance.uw.domain.model.entity.FeatureConfig;
-import com.insurance.uw.domain.repository.FeatureConfigRepository;
 import com.insurance.uw.engine.core.cache.CacheOps;
+import com.insurance.uw.engine.core.enums.CalcType;
+import com.insurance.uw.engine.core.enums.FeatureStatus;
+import com.insurance.uw.engine.core.model.entity.FeatureConfig;
+import com.insurance.uw.engine.core.repository.FeatureConfigRepository;
 
 import java.time.Duration;
 import java.util.ArrayList;
@@ -58,6 +58,7 @@ public class FeatureConfigRepositoryImpl implements FeatureConfigRepository {
                                 .eq(FeatureConfig::getCalcType, calcType)),
                 ttl);
     }
+
 
     @Override
     public List<FeatureConfig> findByFeatureCodes(List<String> featureCodes) {

@@ -1,15 +1,7 @@
 package com.insurance.uw.application.service;
 
 import com.insurance.uw.common.constants.FeatureConstants;
-import com.insurance.uw.common.enums.AggregationLevel;
-import com.insurance.uw.common.enums.CalcType;
-import com.insurance.uw.common.enums.FeatureStatus;
-import com.insurance.uw.common.enums.StorageLevel;
 import com.insurance.uw.domain.model.entity.*;
-import com.insurance.uw.domain.model.valueobject.CalcConfig;
-import com.insurance.uw.domain.repository.FeatureConfigRepository;
-import com.insurance.uw.engine.core.service.FeatureDependencyResolver;
-import com.insurance.uw.engine.core.service.FeatureResultCache;
 import com.insurance.uw.application.feature.impl.FeatureExtractionServiceImpl;
 import com.insurance.uw.sdk.feature.FeatureExtractionRequest;
 import com.insurance.uw.sdk.feature.FeatureExtractionResult;

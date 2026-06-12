@@ -1,7 +1,7 @@
 package com.insurance.uw.interfaces.controller;
 
 import com.insurance.uw.application.service.FeatureConfigApplicationService;
-import com.insurance.uw.domain.model.entity.FeatureScript;
+import com.insurance.uw.engine.core.model.entity.FeatureScript;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;

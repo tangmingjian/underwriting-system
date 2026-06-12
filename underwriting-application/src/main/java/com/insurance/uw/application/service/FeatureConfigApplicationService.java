@@ -1,10 +1,10 @@
 package com.insurance.uw.application.service;
 
-import com.insurance.uw.domain.model.entity.FeatureConfig;
-import com.insurance.uw.domain.model.entity.FeatureScript;
-import com.insurance.uw.domain.model.valueobject.CalcConfig;
-import com.insurance.uw.domain.repository.FeatureConfigRepository;
-import com.insurance.uw.domain.repository.FeatureScriptRepository;
+import com.insurance.uw.engine.core.model.entity.FeatureConfig;
+import com.insurance.uw.engine.core.model.entity.FeatureScript;
+import com.insurance.uw.engine.core.model.valueobject.CalcConfig;
+import com.insurance.uw.engine.core.repository.FeatureConfigRepository;
+import com.insurance.uw.engine.core.repository.FeatureScriptRepository;
 import com.insurance.uw.engine.core.service.GroovyMappingEngine;
 
 import java.util.ArrayList;

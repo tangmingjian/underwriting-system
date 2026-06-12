@@ -1,60 +1,30 @@
 package com.insurance.uw.bootstrap;
 
-import com.insurance.uw.application.service.FeatureConfigApplicationService;
-import com.insurance.uw.application.service.RuleApplicationService;
-import com.insurance.uw.application.feature.impl.FeatureExtractionServiceImpl;
-import com.insurance.uw.application.service.FeatureExtractionService;
-import com.insurance.uw.bootstrap.adapter.*;
-import com.insurance.uw.domain.repository.*;
-import com.insurance.uw.engine.core.handler.*;
-import com.insurance.uw.engine.core.rule.WordingResolver;
-import com.insurance.uw.engine.core.rule.engine.*;
-import com.insurance.uw.engine.core.service.FeatureDependencyResolver;
-import com.insurance.uw.engine.core.service.FeatureExtractionEngine;
-import com.insurance.uw.engine.core.service.FeatureResultCache;
-import com.insurance.uw.engine.core.service.GroovyMappingEngine;
-import com.insurance.uw.engine.core.service.DownstreamApiClient;
-import com.insurance.uw.engine.core.cache.CacheOps;
-
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.insurance.uw.application.feature.impl.FeatureExtractionServiceImpl;
+import com.insurance.uw.application.service.FeatureConfigApplicationService;
+import com.insurance.uw.application.service.FeatureExtractionService;
+import com.insurance.uw.application.service.RuleApplicationService;
+import com.insurance.uw.engine.core.cache.CacheOps;
+import com.insurance.uw.engine.core.handler.*;
+import com.insurance.uw.engine.core.repository.*;
+import com.insurance.uw.engine.core.rule.WordingResolver;
+import com.insurance.uw.engine.core.rule.engine.ConditionListEvaluator;
+import com.insurance.uw.engine.core.rule.engine.CrossDecisionTableEvaluator;
+import com.insurance.uw.engine.core.rule.engine.RuleEngineFactory;
+import com.insurance.uw.engine.core.rule.engine.ScorecardEvaluator;
+import com.insurance.uw.engine.core.service.*;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
 
 import java.util.List;
 import java.util.concurrent.ExecutorService;
-
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
 
 /**
  * 应用服务配置（在 bootstrap 模块组装依赖）
  */
 @Configuration
 public class ApplicationServiceConfiguration {
-
-    // ==================== 引擎适配器（Repository 仍需适配） ====================
-
-    @Bean
-    public FeatureConfigRepositoryAdapter featureConfigRepositoryAdapter(
-            FeatureConfigRepository domainRepo) {
-        return new FeatureConfigRepositoryAdapter(domainRepo);
-    }
-
-    @Bean
-    public FeatureScriptRepositoryAdapter featureScriptRepositoryAdapter(
-            FeatureScriptRepository domainRepo) {
-        return new FeatureScriptRepositoryAdapter(domainRepo);
-    }
-
-    @Bean
-    public CrossDecisionTableRepositoryAdapter crossDecisionTableRepositoryAdapter(
-            CrossDecisionTableRepository domainRepo) {
-        return new CrossDecisionTableRepositoryAdapter(domainRepo);
-    }
-
-    @Bean
-    public ScorecardConfigRepositoryAdapter scorecardConfigRepositoryAdapter(
-            ScorecardConfigRepository domainRepo) {
-        return new ScorecardConfigRepositoryAdapter(domainRepo);
-    }
 
     // ==================== 引擎核心服务 ====================
 
@@ -63,24 +33,24 @@ public class ApplicationServiceConfiguration {
         return new FeatureDependencyResolver();
     }
 
-    // ==================== 规则引擎（engine-core 版） ====================
+    // ==================== 规则引擎 ====================
 
     @Bean
     public ConditionListEvaluator conditionListEvaluator(ObjectMapper objectMapper,
-                                                          List<com.insurance.uw.engine.core.rule.engine.OperatorHandler> operatorHandlers) {
+                                                         List<com.insurance.uw.engine.core.rule.engine.OperatorHandler> operatorHandlers) {
         return new ConditionListEvaluator(objectMapper, operatorHandlers);
     }
 
     @Bean
     public CrossDecisionTableEvaluator crossDecisionTableEvaluator(
-            CrossDecisionTableRepositoryAdapter repositoryAdapter, ObjectMapper objectMapper) {
-        return new CrossDecisionTableEvaluator(repositoryAdapter, objectMapper);
+            CrossDecisionTableRepository repository, ObjectMapper objectMapper) {
+        return new CrossDecisionTableEvaluator(repository, objectMapper);
     }
 
     @Bean
     public ScorecardEvaluator scorecardEvaluator(
-            ScorecardConfigRepositoryAdapter repositoryAdapter, ObjectMapper objectMapper) {
-        return new ScorecardEvaluator(repositoryAdapter, objectMapper);
+            ScorecardConfigRepository repository, ObjectMapper objectMapper) {
+        return new ScorecardEvaluator(repository, objectMapper);
     }
 
     @Bean
@@ -128,7 +98,7 @@ public class ApplicationServiceConfiguration {
         return new CacheManagementService(cacheOps, groovyEngine, featureResultCache);
     }
 
-    // ==================== 特征计算处理器（engine-core 版） ====================
+    // ==================== 特征计算处理器 ====================
 
     @Bean
     public ParamMappingCalcHandler paramMappingCalcHandler() {
@@ -137,17 +107,17 @@ public class ApplicationServiceConfiguration {
 
     @Bean
     public ExpressionCalcHandler expressionCalcHandler(
-            FeatureScriptRepositoryAdapter scriptRepoAdapter,
+            FeatureScriptRepository scriptRepo,
             GroovyMappingEngine groovyEngine) {
-        return new ExpressionCalcHandler(scriptRepoAdapter, groovyEngine);
+        return new ExpressionCalcHandler(scriptRepo, groovyEngine);
     }
 
     @Bean
     public ExternalApiCalcHandler externalApiCalcHandler(
-            FeatureScriptRepositoryAdapter scriptRepoAdapter,
+            FeatureScriptRepository scriptRepo,
             GroovyMappingEngine groovyEngine,
             DownstreamApiClient apiClient) {
-        return new ExternalApiCalcHandler(scriptRepoAdapter, groovyEngine, apiClient);
+        return new ExternalApiCalcHandler(scriptRepo, groovyEngine, apiClient);
     }
 
     @Bean
@@ -155,7 +125,7 @@ public class ApplicationServiceConfiguration {
         return new CustomCalcHandler(customHandlers);
     }
 
-    // ==================== 桩 Handler（engine-core 版） ====================
+    // ==================== 桩 Handler ====================
 
     @Bean
     public DatabaseQueryCalcHandler databaseQueryCalcHandler() {
@@ -171,12 +141,12 @@ public class ApplicationServiceConfiguration {
 
     @Bean
     public FeatureExtractionEngine featureExtractionEngine(
-            FeatureConfigRepositoryAdapter configRepoAdapter,
+            FeatureConfigRepository configRepo,
             FeatureDependencyResolver dependencyResolver,
             ExecutorService featureExecutor,
             List<FeatureCalcHandler> handlers,
             FeatureResultCache resultCache) {
-        return new FeatureExtractionEngine(configRepoAdapter, dependencyResolver,
+        return new FeatureExtractionEngine(configRepo, dependencyResolver,
                 featureExecutor, handlers, resultCache);
     }
 }
