@@ -1,11 +1,13 @@
 package com.insurance.uw.domain.context;
 
 import com.insurance.uw.domain.model.entity.*;
+import com.insurance.uw.engine.core.targeting.FeatureTargeting;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -107,7 +109,10 @@ class ContextHierarchyTest {
         @DisplayName("getInsuredsForFeature → 有 mapping 时按映射过滤")
         void getInsuredsForFeatureWithMapping() {
             FeatureTargeting ft = new FeatureTargeting();
-            ft.setInputMaps(Map.of("POL001", Map.of("INS001", Set.of("f1"), "INS002", Set.of("f1"))), null);
+            ft.setInputMap(Map.of(
+                    FeatureTargeting.pathKey("POLICY", "POL001"),
+                    Map.of(FeatureTargeting.pathKey("INSURED", "INS001"), Set.of("f1"),
+                            FeatureTargeting.pathKey("INSURED", "INS002"), Set.of("f1"))));
             orderCtx.setFeatureTargeting(ft);
             List<InsuredFeatureContext> result = orderCtx.getInsuredsForFeature("f1");
 
@@ -128,7 +133,9 @@ class ContextHierarchyTest {
         @DisplayName("getInsuredsForFeature → mapping 中无该特征时回退到全部")
         void getInsuredsForFeatureFallbackOnMissingFeature() {
             FeatureTargeting ft2 = new FeatureTargeting();
-            ft2.setInputMaps(Map.of("POL001", Map.of("INS001", Set.of("f1"))), null);
+            ft2.setInputMap(Map.of(
+                    FeatureTargeting.pathKey("POLICY", "POL001"),
+                    Map.of(FeatureTargeting.pathKey("INSURED", "INS001"), Set.of("f1"))));
             orderCtx.setFeatureTargeting(ft2);
             List<InsuredFeatureContext> result = orderCtx.getInsuredsForFeature("f2");
 
@@ -139,7 +146,9 @@ class ContextHierarchyTest {
         @DisplayName("getInsuredsForFeature → mapping 值为空集合时回退到全部")
         void getInsuredsForFeatureFallbackOnEmptySet() {
             FeatureTargeting ft3 = new FeatureTargeting();
-            ft3.setInputMaps(Map.of("POL001", Map.of("INS001", Set.of())), null);
+            ft3.setInputMap(Map.of(
+                    FeatureTargeting.pathKey("POLICY", "POL001"),
+                    Map.of(FeatureTargeting.pathKey("INSURED", "INS001"), Set.of())));
             orderCtx.setFeatureTargeting(ft3);
             List<InsuredFeatureContext> result = orderCtx.getInsuredsForFeature("f1");
 
@@ -150,7 +159,9 @@ class ContextHierarchyTest {
         @DisplayName("getPoliciesForFeature → 有 mapping 时按映射过滤")
         void getPoliciesForFeatureWithMapping() {
             FeatureTargeting ft4 = new FeatureTargeting();
-            ft4.setInputMaps(Map.of("POL001", Map.of("INS001", Set.of("f1"))), null);
+            ft4.setInputMap(Map.of(
+                    FeatureTargeting.pathKey("POLICY", "POL001"),
+                    Map.of(FeatureTargeting.pathKey("INSURED", "INS001"), Set.of("f1"))));
             orderCtx.setFeatureTargeting(ft4);
             List<PolicyFeatureContext> result = orderCtx.getPoliciesForFeature("f1");
 

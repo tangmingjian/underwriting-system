@@ -3,6 +3,7 @@ package com.insurance.uw.domain.context;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.insurance.uw.domain.model.entity.Policy;
 import com.insurance.uw.engine.core.context.ContextNode;
+import com.insurance.uw.engine.core.targeting.FeatureTargeting;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -92,13 +93,13 @@ public class PolicyFeatureContext implements ContextNode {
 
         // 优先：从 FeatureTargeting 读取当前保单的精确映射
         FeatureTargeting ft = parentOrderCtx.getFeatureTargeting();
-        Map<String, Map<String, Set<String>>> policyInsuredMap = ft != null ? ft.getRawInsuredMap() : null;
-        if (policyInsuredMap != null) {
-            Map<String, Set<String>> byInsured = policyInsuredMap.get(getPolicyId());
-            if (byInsured != null) {
+        Map<String, Map<String, Set<String>>> rawInputMap = ft != null ? ft.getRawInputMap() : null;
+        if (rawInputMap != null) {
+            Map<String, Set<String>> byChild = rawInputMap.get(FeatureTargeting.pathKey("POLICY", getPolicyId()));
+            if (byChild != null) {
                 List<InsuredFeatureContext> result = new ArrayList<>();
                 for (InsuredFeatureContext ic : insuredContexts) {
-                    Set<String> needed = byInsured.get(ic.getInsuredId());
+                    Set<String> needed = byChild.get(FeatureTargeting.pathKey("INSURED", ic.getInsuredId()));
                     if (needed != null && needed.contains(featureCode)) {
                         result.add(ic);
                     }

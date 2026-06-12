@@ -41,20 +41,17 @@ public class FeatureExtractionServiceImpl implements FeatureExtractionService {
         }
         logRequestDetail(request, orderId);
 
-        // Phase 1: 构建上下文树 + 注入领域 FeatureTargeting（供 convertToResult 过滤用）
+        // Phase 1: 构建上下文树
         OrderFeatureContext orderCtx = new OrderFeatureContext(order);
-        com.insurance.uw.domain.context.FeatureTargeting domainFt =
-                new com.insurance.uw.domain.context.FeatureTargeting();
-        domainFt.setInputMaps(request.getPolicyInsuredFeatureMap(), request.getPolicyApplicantFeatureMap());
-        orderCtx.setFeatureTargeting(domainFt);
 
         // Phase 2: 转换 targeting（domain typed-map → engine path-keyed）
         FeatureTargeting engFt = toEngineTargeting(request);
+        orderCtx.setFeatureTargeting(engFt);
 
         // Phase 3: 委托引擎执行（配置加载、依赖展开、派生映射、拓扑排序、分层执行、结果分发）
         engine.extract(orderCtx, requestedCodes, engFt);
 
-        // Phase 4: 扁平化输出（复用现有 convertToResult + domain FeatureTargeting）
+        // Phase 4: 扁平化输出（基于 engine FeatureTargeting 过滤）
         FeatureExtractionResult result = convertToResult(orderCtx);
         logFinalResult(result, orderId);
         LOG.info("========== 特征提取完成: orderId=" + orderId + " ==========");
@@ -205,7 +202,7 @@ public class FeatureExtractionServiceImpl implements FeatureExtractionService {
      */
     private FeatureExtractionResult convertToResult(OrderFeatureContext orderCtx) {
         FeatureExtractionResult result = new FeatureExtractionResult();
-        com.insurance.uw.domain.context.FeatureTargeting ft = orderCtx.getFeatureTargeting();
+        FeatureTargeting ft = orderCtx.getFeatureTargeting();
 
         // ORDER 级特征：按全局入参过滤
         Set<String> allRequested = ft != null ? ft.collectAllFeatureCodes() : Set.of();
@@ -217,8 +214,9 @@ public class FeatureExtractionServiceImpl implements FeatureExtractionService {
 
         for (PolicyFeatureContext polCtx : orderCtx.getPolicies()) {
             String policyId = polCtx.getPolicyId();
+            String policyKey = FeatureTargeting.pathKey("POLICY", policyId);
             Set<String> policyRequested = ft != null
-                    ? ft.collectFeatureCodesForPolicy(policyId) : Set.of();
+                    ? ft.collectFeatureCodesForParent(policyKey) : Set.of();
 
             // 保单级特征：按该保单下所有实体的需求过滤
             Map<String, Object> polFeats = filterRequested(polCtx.getPolicyFeatures(), policyRequested);
@@ -230,7 +228,8 @@ public class FeatureExtractionServiceImpl implements FeatureExtractionService {
             ApplicantFeatureContext appCtx = polCtx.getApplicantCtx();
             if (appCtx != null) {
                 Set<String> appNeeded = ft != null
-                        ? ft.getNeededFeaturesForApplicant(policyId, appCtx.getApplicantId())
+                        ? ft.getNeededFeatures(policyKey,
+                                FeatureTargeting.pathKey("APPLICANT", appCtx.getApplicantId()))
                         : null;
                 Map<String, Object> appFeats = filterRequested(appCtx.getFeatures(), appNeeded);
                 if (!appFeats.isEmpty()) {
@@ -241,7 +240,8 @@ public class FeatureExtractionServiceImpl implements FeatureExtractionService {
             // 被保人特征：按每个被保人自己的入参需求过滤
             for (InsuredFeatureContext insCtx : polCtx.getInsureds()) {
                 Set<String> insNeeded = ft != null
-                        ? ft.getNeededFeaturesForInsured(policyId, insCtx.getInsuredId())
+                        ? ft.getNeededFeatures(policyKey,
+                                FeatureTargeting.pathKey("INSURED", insCtx.getInsuredId()))
                         : null;
                 Map<String, Object> insFeats = filterRequested(insCtx.getAcquiredFeatures(), insNeeded);
                 if (!insFeats.isEmpty()) {

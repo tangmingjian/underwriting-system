@@ -10,6 +10,7 @@ import com.insurance.uw.engine.core.model.valueobject.CalcConfig;
 import com.insurance.uw.engine.core.handler.ParamMappingCalcHandler;
 import com.insurance.uw.domain.context.*;
 import com.insurance.uw.domain.model.entity.*;
+import com.insurance.uw.engine.core.targeting.FeatureTargeting;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -206,7 +207,9 @@ class ParamMappingCalcHandlerTest {
         @DisplayName("entityType=insured → 遍历相关被保人，读取 Insured 字段")
         void insuredEntityType() {
             FeatureTargeting ft = new FeatureTargeting();
-            ft.setInputMaps(Map.of("POL001", Map.of("INS001", java.util.Set.of("TEST_FC"))), null);
+            ft.setInputMap(Map.of(
+                    FeatureTargeting.pathKey("POLICY", "POL001"),
+                    Map.of(FeatureTargeting.pathKey("INSURED", "INS001"), java.util.Set.of("TEST_FC"))));
             orderCtx.setFeatureTargeting(ft);
             Map<String, Object> result = handler.execute(orderCtx, fc("insured.age"));
 

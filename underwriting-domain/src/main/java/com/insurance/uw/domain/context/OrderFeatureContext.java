@@ -3,6 +3,7 @@ package com.insurance.uw.domain.context;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.insurance.uw.domain.model.entity.Order;
 import com.insurance.uw.engine.core.context.ContextNode;
+import com.insurance.uw.engine.core.targeting.FeatureTargeting;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -91,11 +92,13 @@ public class OrderFeatureContext implements ContextNode {
     public List<InsuredFeatureContext> findInsuredCtx(String insuredId, String featureCode) {
         var contexts = findInsuredCtx(insuredId);
         if (contexts.isEmpty() || featureTargeting == null) return contexts;
-        var allowedPolicies = featureTargeting.getPolicyIdsForInsuredFeature(featureCode, insuredId);
+        var allowedPolicies = featureTargeting.getParentIdsForChildFeature(
+                featureCode, FeatureTargeting.pathKey("INSURED", insuredId));
         if (allowedPolicies == null) return contexts;
         if (allowedPolicies.isEmpty()) return List.of();
         return contexts.stream()
-                .filter(ic -> allowedPolicies.contains(ic.getPolicyContext().getPolicyId()))
+                .filter(ic -> allowedPolicies.contains(
+                        FeatureTargeting.pathKey("POLICY", ic.getPolicyContext().getPolicyId())))
                 .collect(Collectors.toList());
     }
 
@@ -110,8 +113,11 @@ public class OrderFeatureContext implements ContextNode {
      * 按保单ID + 特征码查找保单上下文，若 featurePolicyTargetMap 中该特征不需要此保单则返回 null。
      */
     public PolicyFeatureContext findPolicyCtx(String policyId, String featureCode) {
-        if (featureTargeting != null && !featureTargeting.isPolicyTargetedForFeature(policyId, featureCode)) {
-            return null;
+        if (featureTargeting != null) {
+            Set<String> policyIds = collectParentIdsForFeature(featureCode);
+            if (!policyIds.isEmpty() && !policyIds.contains(policyId)) {
+                return null;
+            }
         }
         return findPolicyCtx(policyId);
     }
@@ -139,8 +145,23 @@ public class OrderFeatureContext implements ContextNode {
      * <p>优先使用派生映射（含依赖传播），回退到输入映射。若都无匹配 → 回退到 getAllInsuredContexts()。</p>
      */
     public List<InsuredFeatureContext> getInsuredsForFeature(String featureCode) {
-        Set<String> matchingIds = featureTargeting != null
-                ? featureTargeting.getInsuredIdsForFeature(featureCode) : null;
+        final Set<String> matchingIds;
+        if (featureTargeting != null) {
+            Set<String> targetIds = featureTargeting.getTargetIdsForFeature(featureCode);
+            if (targetIds != null && !targetIds.isEmpty()) {
+                Set<String> ids = new HashSet<>();
+                for (String key : targetIds) {
+                    if (key.startsWith("INSURED:")) {
+                        ids.add(extractId(key));
+                    }
+                }
+                matchingIds = ids;
+            } else {
+                matchingIds = null;
+            }
+        } else {
+            matchingIds = null;
+        }
 
         if (matchingIds == null || matchingIds.isEmpty()) {
             return getAllInsuredContexts();
@@ -152,13 +173,14 @@ public class OrderFeatureContext implements ContextNode {
                     if (!matchingIds.contains(ic.getInsuredId())) return false;
                     // 第二级：保单维度精确匹配（同一被保人在不同保单可能需要不同特征）
                     if (featureTargeting != null) {
-                        Set<String> allowed = featureTargeting.getPolicyIdsForInsuredFeature(
-                                featureCode, ic.getInsuredId());
+                        Set<String> allowed = featureTargeting.getParentIdsForChildFeature(
+                                featureCode, FeatureTargeting.pathKey("INSURED", ic.getInsuredId()));
                         // allowed=null  → 无映射信息，不过滤
                         // allowed=empty → 该被保人不需要此特征，过滤掉
                         // allowed=非空  → 只保留在这些保单中的上下文
                         if (allowed != null) {
-                            return allowed.contains(ic.getPolicyContext().getPolicyId());
+                            if (allowed.isEmpty()) return false;
+                            return allowed.contains(FeatureTargeting.pathKey("POLICY", ic.getPolicyContext().getPolicyId()));
                         }
                     }
                     return true;
@@ -192,8 +214,8 @@ public class OrderFeatureContext implements ContextNode {
      * 若都无匹配 → 回退到 getPolicies()。
      */
     public List<PolicyFeatureContext> getPoliciesForFeature(String featureCode) {
-        Set<String> matchingPolicyIds = featureTargeting != null
-                ? featureTargeting.getPolicyIdsForFeature(featureCode) : null;
+        final Set<String> matchingPolicyIds = featureTargeting != null
+                ? collectParentIdsForFeature(featureCode) : null;
 
         if (matchingPolicyIds == null || matchingPolicyIds.isEmpty()) {
             return getPolicies();
@@ -201,6 +223,32 @@ public class OrderFeatureContext implements ContextNode {
         return policyContexts.stream()
                 .filter(pc -> matchingPolicyIds.contains(pc.getPolicyId()))
                 .collect(Collectors.toList());
+    }
+
+    // ==================== Helper ====================
+
+    /**
+     * 从 targeting 的 input map 中提取该特征涉及的保单 ID 集合。
+     */
+    private Set<String> collectParentIdsForFeature(String featureCode) {
+        Set<String> policyIds = new LinkedHashSet<>();
+        Map<String, Map<String, Set<String>>> rawMap = featureTargeting.getRawInputMap();
+        if (rawMap != null) {
+            for (var parentEntry : rawMap.entrySet()) {
+                for (Set<String> fcs : parentEntry.getValue().values()) {
+                    if (fcs.contains(featureCode)) {
+                        policyIds.add(extractId(parentEntry.getKey()));
+                        break;
+                    }
+                }
+            }
+        }
+        return policyIds;
+    }
+
+    private static String extractId(String pathKey) {
+        int idx = pathKey.indexOf(':');
+        return idx >= 0 ? pathKey.substring(idx + 1) : pathKey;
     }
 
 }
